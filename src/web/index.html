@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <script src="es5/tex-mml-chtml.js"></script>
+        <script src="ui.js"></script>
+        <script src="main.js"></script>
+        <script src="bridge.js"></script>
+        <script src="renderer.js"></script>
+        <script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+        <link rel="stylesheet" href="style.css"/>
+    </head>
+    <body>
+        <div id="latexequations">
+            <table>
+                <tr id="trd1">
+                    <td id="label1" class="label" rowspan="1">
+                        <div>1</div>
+                        <button class="viewbutton">▼</button>
+                    </td>
+                    <td id="display1">
+                        <div>\[\displaystyle{\sin(x)}\]</div>
+                        <button class="deleq">✖</button>
+                    </td>
+                </tr>
+                <tr id="treq1">
+                    <td colspan="2">
+                        <textarea id="eq1" autofocus>\sin(x)</textarea>
+                    </td>
+                </tr>
+            </table>
+            <div id="plusdiv">
+                <button id="addeq"><img src="../../imgs/plus.png"></button>
+            </div>
+            <div id="settings">
+                <button id="cog"></button>
+            </div>
+        </div>
+        <canvas id="glcanvas"></canvas>
+    </body>
+</html>
