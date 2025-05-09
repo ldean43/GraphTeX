@@ -29,7 +29,7 @@ float Evaluator::evaluateHelper(const Expr* expr) {
                 if (eval != 0) {
                     return evaluateHelper(op->e1_) / eval;
                 }
-                throw std::runtime_error ("evaluating error: division by 0");
+                return NAN;
             } else if (op->op_ == '^') {
                 return pow(evaluateHelper(op->e1_), evaluateHelper(op->e2_));
             }

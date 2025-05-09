@@ -1,22 +1,19 @@
-html {
-    font-size: 14px;
+html, body {
+    margin: 0;
+    padding: 0;
     height: 100%;
-}
-
-body {
-    font-family: Arial, sans-serif;
-    display:flex;
-    height: 100%;
+    width: 100%;
+    display: flex;
+    overflow: hidden;
 }
 
 #latexequations {
     width: 500px;
     height: 100%;
-    padding: 0px;
-    margin: 0px;
-    flex-shrink: 0;
     overflow-y: auto;
-    border: 1px solid black;
+    background: white;
+    border-right: 1px solid black;
+    flex-shrink: 0;
 }
 
 table {
@@ -127,4 +124,10 @@ td {
 * {
     margin:0rem;
     padding:0rem
+}
+
+canvas {
+    flex-grow: 1;
+    height: 100%;
+    display: block;
 }

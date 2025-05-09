@@ -3,6 +3,7 @@
 #include <QWebChannel>
 #include <QUrl>
 #include <QDir>
+#include <QWebEngineSettings>
 #include "InTeX/evaluator.hpp"
 #include "InTeX/lexer.hpp"
 #include "InTeX/parser.hpp"
@@ -18,6 +19,12 @@ int main(int argc, char *argv[]) {
     // Create the WebEngine view that will render HTML content
     QWebEngineView view;
     view.page()->setWebChannel(&channel);
+    
+    // DevTools view
+    QWebEngineView *devTools = new QWebEngineView();
+    view.page()->setDevToolsPage(devTools->page());
+    devTools->resize(800, 600);
+    devTools->show(); 
 
     // Set the URL to the HTML page using the absolute path of the current directory
     QDir dir(QDir::currentPath());

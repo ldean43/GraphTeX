@@ -1,25 +1,40 @@
 #include "bridge.hpp"
 #include "geometry.hpp"
 
-QByteArray Bridge::getMesh(const QString &id) {
-    // Normalize the ID to ensure consistent hashing
+QVariantList Bridge::getVertices(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    return QByteArray(reinterpret_cast<const char*>(meshes_[norm].data()), meshes_[norm].size() * sizeof(float));
+    QVariantList list;
+    for (float f : vertices_[norm]) {
+        list.append(f);
+    }
+    return list;
 }
 
-QByteArray Bridge::getIndices(const QString &id) {
-    // Normalize the ID to ensure consistent hashing
+QVariantList Bridge::getNormals(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    return QByteArray(reinterpret_cast<const char*>(indices_[norm].data()), indices_[norm].size() * sizeof(uint16_t));
+    QVariantList list;
+    for (float f : normals_[norm]) {
+        list.append(f);
+    }
+    return list;
 }
 
-void Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
+QVariantList Bridge::getIndices(const QString &id) {
+    QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
+    QVariantList list;
+    for (uint16_t i : indices_[norm]) {
+        list.append(i);
+    }
+    return list;
+}
+
+bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
     // Normalize the ID to ensure consistent hashing
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
 
     if (latex.isEmpty()) {
         qDebug() << "Error: Empty LaTeX string";
-        return;
+        return false;
     }
 
     if (evaluators_.count(norm)) {
@@ -41,28 +56,22 @@ void Bridge::updateEvaluator(const QString &latex, const QString &id, const QVar
 
             // Generate the mesh
             Geometry geometry(evaluators_[norm]);
-            geometry.generateVertices();
-            geometry.generateIndices();
-            meshes_[norm].clear();
-            indices_[norm].clear();
             qDebug() << geometry.vertices_.size();
-            for (auto it = geometry.vertices_.begin(); it < geometry.vertices_.end(); it += 3) {
-                qDebug() << *it << *(it + 1) << *(it + 2);
-            }
-
-            meshes_[norm] = geometry.vertices_;
+            vertices_[norm] = geometry.vertices_;
             indices_[norm] = geometry.indices_;
+            normals_[norm] = geometry.normals_;
             qDebug() << "Mesh updated for ID:" << norm;
+            return true;
         } catch (const std::exception& e) {
             qDebug() << "Error updating AST:" << e.what();
+            return false;
         }
     } else {
-        createEvaluator(latex, id, vars);
+        return createEvaluator(latex, id, vars);
     }
-    return;
 }
 
-void Bridge::createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
+bool Bridge::createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
     // Normalize the ID to ensure consistent hashing
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
 
@@ -82,25 +91,27 @@ void Bridge::createEvaluator(const QString &latex, const QString &id, const QVar
 
         // Generate the mesh
         Geometry geometry(evaluators_[norm]);
-        geometry.generateVertices();
-        geometry.generateIndices();
-        meshes_[norm] = geometry.vertices_;
+        vertices_[norm] = geometry.vertices_;
+        normals_[norm] = geometry.normals_;
         indices_[norm] = geometry.indices_;
         qDebug() << "Mesh updated for ID:" << norm;
+        return true;
     } catch (const std::exception& e) {
         // Handle lexing and parsing errors
         qDebug() << "Error creating AST:" << e.what();
+        return false;
     }
-    return;
 }
 
-void Bridge::deleteEvaluator(const QString &id) {
+bool Bridge::deleteEvaluator(const QString &id) {
     // Normalize the ID to ensure consistent hashing
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
     if (evaluators_.count(norm)) {
         delete evaluators_[norm];
         evaluators_.erase(norm);
-        meshes_.erase(norm);
+        vertices_.erase(norm);
         indices_.erase(norm);
+        return true;
     }
+    return false;
 }

@@ -15,14 +15,16 @@ class Bridge : public QObject
     Q_OBJECT
 public:
     std::unordered_map<QString, Evaluator*> evaluators_;
-    std::unordered_map<QString, std::vector<float>> meshes_;
+    std::unordered_map<QString, std::vector<float>> vertices_;
+    std::unordered_map<QString, std::vector<float>> normals_;
     std::unordered_map<QString, std::vector<uint16_t>> indices_;
 
     explicit Bridge(QObject *parent = nullptr) : QObject(parent) {}
 public slots:
-    QByteArray getMesh(const QString &id);
-    QByteArray getIndices(const QString &id);
-    void updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
-    void createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
-    void deleteEvaluator(const QString &id);
+    QVariantList getVertices(const QString &id);
+    QVariantList getIndices(const QString &id);
+    QVariantList getNormals(const QString &id);
+    bool updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
+    bool createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
+    bool deleteEvaluator(const QString &id);
 };

@@ -2,6 +2,7 @@
 #include "InTeX/lexer.hpp"
 #include "InTeX/parser.hpp"
 #include "InTeX/evaluator.hpp"
+#include "vec3.hpp"
 #include <cstdint>
 
 class Geometry {
@@ -11,23 +12,28 @@ private:
     float result_;
     int range_;
     int step_;
+
+    void generateVertices();
+    void generateIndices();
+    void generateNormals();
 public:
     std::vector<float> vertices_; // All Vertices
     std::vector<uint16_t> indices_; // Triangle Strip Indices
+    std::vector<float> normals_; // Normals
     
     explicit Geometry(Evaluator* evaluator) : evaluator_(evaluator) {
-        range_ = 1;
-        step_ = (int)((2*(float)range_)/((float)range_ * 0.1));
+        range_ = 10;
+        step_ = (int)((2*(float)range_)/((float)range_ * .01));
+        this->generateVertices();
+        this->generateIndices();
+        this->generateNormals();
     }
     explicit Geometry(Evaluator* evaluator, float range) : evaluator_(evaluator) {
         range_ = range;
         step_ = (2*range)/(range_ * 0.01);
+        this->generateVertices();
+        this->generateIndices();
+        this->generateNormals();
     }
     ~Geometry() {}
-    void generateVertices();
-    /*
-        Generates indices for triangle strip, alternating from left to right 
-        and right to left each row
-    */
-    void generateIndices();
 };
