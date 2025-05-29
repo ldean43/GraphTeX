@@ -4,22 +4,18 @@ void Geometry::generateVertices() {
     // truncate small decimals
     const float epsilon = 1e-6;
 
-    if((evaluator_->vars_.find("x") == evaluator_->vars_.end())
-        && (evaluator_->vars_.find("y") == evaluator_->vars_.end())) {
-        graph_ = false;
-        result_ = evaluator_->evaluate();
-        return;
-    }
-
-    for (float y = -range_; y < range_; y += range_ * .01) {
-        for (float x = -range_; x < range_; x += range_ * .01) {
+    for (int i = 0; i < step_; i++) {
+        float y = -range_ + i * step_size_;
+        for (int j = 0; j < step_; j++) {
+            float x = -range_ + j * step_size_;
             x = std::abs(x) < epsilon ? 0.0 : x;
             y = std::abs(y) < epsilon ? 0.0 : y;
             evaluator_->vars_["x"] = x;
             evaluator_->vars_["y"] = y;
-            vertices_.push_back(x);
-            vertices_.push_back(y);
-            vertices_.push_back(evaluator_->evaluate());
+            int index = 3 * (i * step_ + j);
+            vertices_[index] = x;
+            vertices_[index + 1] = y;
+            vertices_[index + 2] = evaluator_->evaluate();
         }
     }
     evaluator_->vars_.erase("x");
@@ -30,7 +26,7 @@ void Geometry::generateVertices() {
     and right to left each row
 */
 void Geometry::generateIndices() {
-    for (int i = 0; i < step_; i++) {
+    for (int i = 0; i < step_ - 1; i++) {
         if (i % 2) {
             /*
                 Degenerate Triangle:
@@ -41,10 +37,8 @@ void Geometry::generateIndices() {
             // Triangle strip from right to left
             if (i + 1 < step_) {
                 for (int j = step_ - 1; j > 0; j--) {
-                    if (i + 1 <= step_) {
-                        indices_.push_back((i+1)*step_ + j);
-                        indices_.push_back(i*step_ + j - 1);
-                    }
+                    indices_.push_back((i+1)*step_ + j);
+                    indices_.push_back(i*step_ + j - 1);
                 }
             }
         } else {
@@ -58,10 +52,8 @@ void Geometry::generateIndices() {
             }
             // Triangle strip from left to right
             for (int j = 0; j < step_; j++) {
-                if (i + 1 < step_) {
-                    indices_.push_back((i+1)*step_ + j);
-                    indices_.push_back(i*step_ + j);
-                }
+                indices_.push_back((i+1)*step_ + j);
+                indices_.push_back(i*step_ + j);
             }
         }
     }
@@ -85,8 +77,8 @@ void Geometry::generateNormals() {
 
         // Triangle strip swaps vertex order for winding
         vec3 normal = (i % 2 == 0) ? 
-            (v1 - v0).cross(v2 - v0) :  // Even triangles (CCW)
-            (v2 - v0).cross(v1 - v0);   // Odd triangles (CW to respect triangle strip alternation)
+            (v1 - v0).cross(v2 - v0) :
+            (v2 - v0).cross(v1 - v0);
         normal = normal.normalize();
 
         normals[i0] += normal;

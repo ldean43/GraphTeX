@@ -134,6 +134,10 @@ float Evaluator::evaluateHelper(const Expr* expr) {
     }
 }
 
+Evaluator* Evaluator::copy() {
+    return new Evaluator(ast_->copy(),{});
+}
+
 float Evaluator::evaluate() {
     result_ = evaluateHelper(ast_);
     return result_;

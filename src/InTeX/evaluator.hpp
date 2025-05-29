@@ -15,5 +15,6 @@ class Evaluator {
         ~Evaluator() {
             delete ast_;
         }
+        Evaluator* copy();
         float evaluate();
 };

@@ -1,31 +1,25 @@
 #include "bridge.hpp"
 #include "geometry.hpp"
 
-QVariantList Bridge::getVertices(const QString &id) {
+QString Bridge::getVertices(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QVariantList list;
-    for (float f : vertices_[norm]) {
-        list.append(f);
-    }
-    return list;
+    QByteArray raw(reinterpret_cast<const char*>(vertices_[norm].data()), vertices_[norm].size() * sizeof(float));
+    QString base64 = QString::fromLatin1(raw.toBase64());
+    return base64;
 }
 
-QVariantList Bridge::getNormals(const QString &id) {
+QString Bridge::getNormals(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QVariantList list;
-    for (float f : normals_[norm]) {
-        list.append(f);
-    }
-    return list;
+    QByteArray raw(reinterpret_cast<const char*>(normals_[norm].data()), normals_[norm].size() * sizeof(float));
+    QString base64 = QString::fromLatin1(raw.toBase64());
+    return base64;
 }
 
-QVariantList Bridge::getIndices(const QString &id) {
+QString Bridge::getIndices(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QVariantList list;
-    for (uint16_t i : indices_[norm]) {
-        list.append(i);
-    }
-    return list;
+    QByteArray raw(reinterpret_cast<const char*>(indices_[norm].data()), indices_[norm].size() * sizeof(uint16_t));
+    QString base64 = QString::fromLatin1(raw.toBase64());
+    return base64;
 }
 
 bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {

@@ -1,38 +1,32 @@
 class Renderer {
     // general webgl properties
-    #gl;
-    #canvas;
-    #meshes;
+    static #gl;
+    static #canvas;
+    static #meshes;
     // properties for projection and view matrices
-    #worldMatrix;
-    #cameraMatrix;
-    #projectionMatrix;
-    #worldViewProjectionMatrix;
-    #displayWidth;
-    #displayHeight;
-    #camPos;
-    #range = 10;
-    #yaw = 0;
-    #pitch = 0;
-    #isDragging = false;
-    #mouseX = 0;
-    #mouseY = 0;
-    // properties for shaders
-    #lineProgram;
-    #linePositionLocation;
-    #lineProjectionMatrixLocation;
-
-    #phongProgram;
-    #phongPositionLocation;
-    #normalLocation;
-    #lightLocation;
-    #camLocation;
-    #rangeLocation;
-    #worldMatrixLocation;
-    #phongProjectionMatrixLocation;
-    
-
-    #linevs = `#version 300 es
+    static #matrices = {
+        worldMatrix: undefined,
+        cameraMatrix: undefined,
+        projectionMatrix: undefined
+    }
+    static #varLocations = {
+        linePositionLocation: undefined,
+        lineProjectionMatrixLocation: undefined,
+        phongPositionLocation: undefined,
+        normalLocation: undefined,
+        lightLocation: undefined,
+        camLocation: undefined,
+        rangeLocation: undefined,
+        worldMatrixLocaiton: undefined,
+        phongProjectionMatrixLocation: undefined
+    }
+    static #cameraConfig = {
+        yaw: 0,
+        pitch: 0,
+        camPos: undefined
+    }
+    static #shaders = {
+        linevs: `#version 300 es
         precision highp float;
         in vec3 a_position;
 
@@ -40,18 +34,16 @@ class Renderer {
          
         void main() {
             gl_Position = u_matrix * vec4(a_position, 1);
-        }`;
-
-    #linefs = `#version 300 es
+        }`,
+        linefs: `#version 300 es
         precision highp float;
 
         out vec4 fragColor;
         
         void main() {
             fragColor = vec4(0.0, 0.0, 0.0, 1.0);
-        }`;
-
-    #phongvs = `#version 300 es
+        }`,
+        phongvs: `#version 300 es
         precision highp float;
         in vec3 a_position;
         in vec3 a_normal;
@@ -72,9 +64,8 @@ class Renderer {
             v_to_light = u_light_pos - v_position;
             v_to_cam = u_cam_pos - v_position;
             gl_Position = u_matrix * vec4(a_position, 1);
-        }`;
-
-    #phongfs = `#version 300 es
+        }`,
+        phongfs: `#version 300 es
         precision highp float;
 
         in vec3 v_normal;
@@ -100,204 +91,246 @@ class Renderer {
             color = clamp(color, 0.0, 1.0);
 
             fragColor = vec4(color, 1.0);
-        }`;
+        }`
+    };
+    static #lineProgram;
+    static #phongProgram;
+    static #displayWidth;
+    static #displayHeight;
+    static #range = 10;
+    static #isDragging = false;
+    static #mouseX = 0;
+    static #mouseY = 0;
+        
+    static init(canvas) {
+        Renderer.#canvas = canvas;
+        Renderer.#gl = canvas.getContext('webgl2');
+        Renderer.#canvas.width = Renderer.#canvas.clientWidth;
+        Renderer.#canvas.height = Renderer.#canvas.clientHeight;
 
-    constructor(canvas) {
-        this.#canvas = canvas;
-        this.#gl = canvas.getContext('webgl2');
-
-        if (!this.#gl) {
+        if (!Renderer.#gl) {
             console.error('WebGL not supported, falling back on experimental-webgl');
-            this.#gl = canvas.getContext('experimental-webgl');
+            Renderer.#gl = canvas.getContext('experimental-webgl');
         }
-        if (!this.#gl) {
+        if (!Renderer.#gl) {
             qDebug('Unable to initialize WebGL. Qt may not support it.');
         }
 
-        this.#gl.clearDepth(1.0);
-        this.#meshes = {"axes": {"vertices": new Float32Array([
+        Renderer.#gl.clearDepth(1.0);
+        Renderer.#meshes = {axes: {vertices: new Float32Array([
                                                 -10, 0, 0,
                                                 10, 0, 0,
                                                 0, -10, 0, 
                                                 0, 10, 0,
                                                 0, 0, -10,
                                                 0, 0, 10]),
-                                "indices": new Uint16Array([0, 1, 
+                                indices: new Uint16Array([0, 1, 
                                                             2, 3, 
                                                             4, 5]),
-                                "buffers": [this.#gl.createBuffer(), this.#gl.createBuffer()],
-                                "vao": this.#gl.createVertexArray()}};
+                                buffers: [Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer()],
+                                vao: Renderer.#gl.createVertexArray()}};
 
         // set up line shaders
-        this.#lineProgram = webglUtils.createProgramFromSources(this.#gl, [this.#linevs, this.#linefs]);
-        this.#gl.useProgram(this.#lineProgram);
-        this.#linePositionLocation = this.#gl.getAttribLocation(this.#lineProgram, "a_position");
-        this.#lineProjectionMatrixLocation = this.#gl.getUniformLocation(this.#lineProgram, "u_matrix");
+        Renderer.#lineProgram = webglUtils.createProgramFromSources(Renderer.#gl, [Renderer.#shaders.linevs, Renderer.#shaders.linefs]);
+        Renderer.#gl.useProgram(Renderer.#lineProgram);
+        Renderer.#varLocations.linePositionLocation = Renderer.#gl.getAttribLocation(Renderer.#lineProgram, "a_position");
+        Renderer.#varLocations.lineProjectionMatrixLocation = Renderer.#gl.getUniformLocation(Renderer.#lineProgram, "u_matrix");
 
         // set up axes vao
-        this.#gl.bindVertexArray(this.#meshes['axes']['vao']);
-        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#meshes['axes']['buffers'][0]);
-        this.#gl.bufferData(this.#gl.ARRAY_BUFFER, this.#meshes['axes']['vertices'], this.#gl.STATIC_DRAW);
-        this.#gl.enableVertexAttribArray(this.#linePositionLocation);
-        this.#gl.vertexAttribPointer(this.#linePositionLocation, 3, this.#gl.FLOAT, false, 0, 0);
-        this.#gl.bindBuffer(this.#gl.ELEMENT_ARRAY_BUFFER, this.#meshes['axes']['buffers'][1]);
-        this.#gl.bufferData(this.#gl.ELEMENT_ARRAY_BUFFER, this.#meshes['axes']['indices'], this.#gl.STATIC_DRAW);
-        this.#gl.bindVertexArray(null);
+        Renderer.#gl.bindVertexArray(Renderer.#meshes.axes.vao);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes.axes.buffers[0]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes.axes.vertices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.linePositionLocation);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.linePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ELEMENT_ARRAY_BUFFER, Renderer.#meshes.axes.buffers[1]);
+        Renderer.#gl.bufferData(Renderer.#gl.ELEMENT_ARRAY_BUFFER, Renderer.#meshes.axes.indices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.bindVertexArray(null);
         
         // set up phong shaders
-        this.#phongProgram = webglUtils.createProgramFromSources(this.#gl, [this.#phongvs, this.#phongfs]);
-        this.#gl.useProgram(this.#phongProgram);
-        this.#phongPositionLocation = this.#gl.getAttribLocation(this.#phongProgram, "a_position");
-        this.#normalLocation = this.#gl.getAttribLocation(this.#phongProgram, "a_normal");
-        this.#phongProjectionMatrixLocation = this.#gl.getUniformLocation(this.#phongProgram, "u_matrix");
-        this.#worldMatrixLocation = this.#gl.getUniformLocation(this.#phongProgram, "u_world");
-        this.#lightLocation = this.#gl.getUniformLocation(this.#phongProgram, "u_light_pos");
-        this.#camLocation = this.#gl.getUniformLocation(this.#phongProgram, "u_cam_pos");
-        this.#rangeLocation = this.#gl.getUniformLocation(this.#phongProgram, "u_range");
+        Renderer.#phongProgram = webglUtils.createProgramFromSources(Renderer.#gl, [Renderer.#shaders.phongvs, Renderer.#shaders.phongfs]);
+        Renderer.#gl.useProgram(Renderer.#phongProgram);
+        Renderer.#varLocations.phongPositionLocation = Renderer.#gl.getAttribLocation(Renderer.#phongProgram, "a_position");
+        Renderer.#varLocations.normalLocation = Renderer.#gl.getAttribLocation(Renderer.#phongProgram, "a_normal");
+        Renderer.#varLocations.phongProjectionMatrixLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_matrix");
+        Renderer.#varLocations.worldMatrixLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_world");
+        Renderer.#varLocations.lightLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_light_pos");
+        Renderer.#varLocations.camLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_cam_pos");
+        Renderer.#varLocations.rangeLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_range");
 
         const fov = Math.PI / 4;
-        const aspect = this.#canvas.clientWidth / this.#canvas.clientHeight;
-        console.log('width and height: ', this.#canvas.clientWidth, this.#canvas.clientHeight);
+        const aspect = Renderer.#canvas.clientWidth / Renderer.#canvas.clientHeight;
         const zNear = 0.1;
         const zFar = 1000;
-        const distance = (this.#range) / Math.tan(fov / 2);
-        this.#projectionMatrix = m4.perspective(fov, aspect, zNear, zFar);
-        this.#camPos = m4.scaleVector(m4.normalize([0,0,1]), distance);
-        this.#cameraMatrix = m4.inverse(m4.lookAt(this.#camPos, [0, 0, 0], [0, 1, 0]));
-        this.#worldMatrix = m4.identity();
-        this.#worldViewProjectionMatrix = m4.multiply(this.#projectionMatrix, m4.multiply(this.#cameraMatrix, this.#worldMatrix));
+        const distance = Renderer.#range / Math.tan(fov / 2);
+        Renderer.#matrices.projectionMatrix = m4.perspective(fov, aspect, zNear, zFar);
+        Renderer.#cameraConfig.camPos = m4.scaleVector(m4.normalize([0,0,1]), distance);
+        Renderer.#matrices.cameraMatrix = m4.inverse(m4.lookAt(Renderer.#cameraConfig.camPos, [0, 0, 0], [0, 1, 0]));
+        Renderer.#matrices.worldMatrix = m4.xRotation(-Math.PI/2);
+        Renderer.#matrices.worldViewProjectionMatrix = 
+            m4.multiply(Renderer.#matrices.projectionMatrix,
+                m4.multiply(Renderer.#matrices.cameraMatrix, Renderer.#matrices.worldMatrix));
 
-        this.#canvas.addEventListener('pointerdown', (e) => {
-            this.#isDragging = true;
-            this.#mouseX = e.clientX;
-            this.#mouseY = e.clientY;
+        Renderer.#canvas.addEventListener('pointerdown', (e) => {
+            Renderer.#isDragging = true;
+            Renderer.#mouseX = e.clientX;
+            Renderer.#mouseY = e.clientY;
         });
-        this.#canvas.addEventListener('pointerup', () => {
-            this.#isDragging = false;
+
+        Renderer.#canvas.addEventListener('pointerup', () => {
+            Renderer.#isDragging = false;
         });
-        this.#canvas.addEventListener('pointermove', (e) => {
-            if (this.#isDragging) {
-                const deltaX = e.clientX - this.#mouseX;
-                const deltaY = e.clientY - this.#mouseY;
-                this.#mouseX = e.clientX;
-                this.#mouseY = e.clientY;
-                this.#yaw += deltaX * 0.01;
-                this.#pitch += deltaY * 0.01;
-                this.#yaw = this.#yaw % (2 * Math.PI);
-                this.#pitch = this.#pitch % (2 * Math.PI);
-                this.updateCameraMatrix();
+
+        Renderer.#canvas.addEventListener('pointermove', (e) => {
+            if (Renderer.#isDragging) {
+                const deltaX = e.clientX - Renderer.#mouseX;
+                const deltaY = e.clientY - Renderer.#mouseY;
+                Renderer.#mouseX = e.clientX;
+                Renderer.#mouseY = e.clientY;
+                Renderer.#cameraConfig.yaw += deltaX * 0.01;
+                Renderer.#cameraConfig.pitch += deltaY * 0.01;
+                Renderer.#cameraConfig.yaw = (Renderer.#cameraConfig.yaw % (2 * Math.PI) + (2 * Math.PI)) % (2 * Math.PI)
+                Renderer.#cameraConfig.pitch = Math.max(-Math.PI / 2 + .1, Math.min(Math.PI/2 - .1, Renderer.#cameraConfig.pitch % (2 * Math.PI) + (2 * Math.PI) % (2 * Math.PI)))
+                Renderer.updateCameraMatrix();
             }
         });
 
         window.addEventListener('resize', () => {
             requestAnimationFrame(() => {
-                console.log('Resizing canvas', this.#canvas.clientWidth, this.#canvas.clientHeight);
-                this.#canvas.width = this.#canvas.clientWidth;
-                this.#canvas.height = this.#canvas.clientHeight;
-                this.#gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
-                renderer.updateProjectionMatrix();
+                console.log('Resizing canvas', Renderer.#canvas.clientWidth, Renderer.#canvas.clientHeight);
+                Renderer.#canvas.width = Renderer.#canvas.clientWidth;
+                Renderer.#canvas.height = Renderer.#canvas.clientHeight;
+                Renderer.#gl.viewport(0, 0, Renderer.#canvas.width, Renderer.#canvas.height);
+                Renderer.updateProjectionMatrix();
             });
         });
 
-        this.#canvas.addEventListener('wheel', (e) => {
+        Renderer.#canvas.addEventListener('wheel', (e) => {
             const delta = e.deltaY;
-            this.#range += delta * .01;
-            this.#range = Math.max(this.#range, 0.1);
-            this.#range = Math.min(this.#range, 100);
-            this.updateCameraMatrix();
+            Renderer.#range += delta * .01;
+            Renderer.#range = Math.max(Renderer.#range, 0.1);
+            Renderer.#range = Math.min(Renderer.#range, 100);
+            Renderer.updateCameraMatrix();
         });
     }
 
-    updateCameraMatrix() {
-        const camDistance = (this.#range) / Math.tan(Math.PI / 4 / 2);
+    static updateCameraMatrix() {
+        const camDistance = (Renderer.#range) / Math.tan(Math.PI / 4 / 2);
         // spherical coordinates
-        const x = camDistance * Math.cos(this.#pitch) * Math.sin(this.#yaw);
-        const y = camDistance * Math.sin(this.#pitch);
-        const z = camDistance * Math.cos(this.#pitch) * Math.cos(this.#yaw);
-        this.#camPos = [x, y, z];
-        this.#cameraMatrix = m4.inverse(m4.lookAt(this.#camPos, [0, 0, 0], [0, 1, 0]));
-        this.#worldViewProjectionMatrix = m4.multiply(this.#projectionMatrix, m4.multiply(this.#cameraMatrix, this.#worldMatrix));
-        this.render();
+        const x = camDistance * Math.cos(Renderer.#cameraConfig.pitch) * Math.sin(Renderer.#cameraConfig.yaw);
+        const y = camDistance * Math.sin(Renderer.#cameraConfig.pitch);
+        const z = camDistance * Math.cos(Renderer.#cameraConfig.pitch) * Math.cos(Renderer.#cameraConfig.yaw);
+        Renderer.#cameraConfig.camPos = [x, y, z];
+        Renderer.#matrices.cameraMatrix = m4.inverse(m4.lookAt(Renderer.#cameraConfig.camPos, [0, 0, 0], [0, 1, 0]));
+        Renderer.#matrices.worldViewProjectionMatrix = m4.multiply(Renderer.#matrices.projectionMatrix, m4.multiply(Renderer.#matrices.cameraMatrix, Renderer.#matrices.worldMatrix));
+        Renderer.render();
     }
 
-    updateProjectionMatrix() {
+    static updateProjectionMatrix() {
         const fov = Math.PI / 4;
-        const aspect = this.#canvas.width / this.#canvas.height;
+        const aspect = Renderer.#canvas.width / Renderer.#canvas.height;
         const zNear = 0.1;
         const zFar = 1000;
-        this.#projectionMatrix = m4.perspective(fov, aspect, zNear, zFar);
-        this.#worldViewProjectionMatrix = m4.multiply(this.#projectionMatrix, m4.multiply(this.#cameraMatrix, this.#worldMatrix));
-        this.render();
+        Renderer.#matrices.projectionMatrix = m4.perspective(fov, aspect, zNear, zFar);
+        Renderer.#matrices.worldViewProjectionMatrix = m4.multiply(Renderer.#matrices.projectionMatrix, m4.multiply(Renderer.#matrices.cameraMatrix, Renderer.#matrices.worldMatrix));
+        Renderer.render();
     }
 
-    addMesh(name, vertices, indices, normals) {
-        this.#meshes[name] = {};
-        this.#meshes[name]['vertices'] = vertices;
-        this.#meshes[name]['indices'] = indices;
-        this.#meshes[name]['normals'] = normals;
+    static updateAxesDivs() {
+        const xDiv = document.getElementById('xAxis');
+        const yDiv = document.getElementById('yAxis');
+        const zDIv = document.getElementById('zAxis');
+        let x = [11, 0, 0, 1]
+        let y = [0, 11, 0, 1]
+        let z = [0, 0, 11, 1]
 
-        this.#meshes[name]['vao'] = this.#gl.createVertexArray();
-        this.#meshes[name]['buffers'] = [this.#gl.createBuffer(), this.#gl.createBuffer(), this.#gl.createBuffer()];
-        this.#gl.bindVertexArray(this.#meshes[name]['vao']);
-        // binding position buffer
-        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#meshes[name]['buffers'][0]);
-        this.#gl.bufferData(this.#gl.ARRAY_BUFFER, vertices, this.#gl.STATIC_DRAW);
-        this.#gl.enableVertexAttribArray(this.#phongPositionLocation);
-        this.#gl.vertexAttribPointer(this.#phongPositionLocation, 3, this.#gl.FLOAT, false, 0, 0);
-        // binding normal buffer
-        this.#gl.bindBuffer(this.#gl.ARRAY_BUFFER, this.#meshes[name]['buffers'][1]);
-        this.#gl.bufferData(this.#gl.ARRAY_BUFFER, normals, this.#gl.STATIC_DRAW);
-        this.#gl.enableVertexAttribArray(this.#normalLocation);
-        this.#gl.vertexAttribPointer(this.#normalLocation, 3, this.#gl.FLOAT, false, 0, 0);
-        // binding index buffer
-        this.#gl.bindBuffer(this.#gl.ELEMENT_ARRAY_BUFFER, this.#meshes[name]['buffers'][2]);
-        this.#gl.bufferData(this.#gl.ELEMENT_ARRAY_BUFFER, indices, this.#gl.STATIC_DRAW);
-        this.#gl.bindVertexArray(null);
+        x = m4.transformVector(Renderer.#matrices.worldViewProjectionMatrix, x);
+        y = m4.transformVector(Renderer.#matrices.worldViewProjectionMatrix, y);
+        z = m4.transformVector(Renderer.#matrices.worldViewProjectionMatrix, z);
+        // Divide by the homogeneous coordinate
+        x[0] /= x[3]; x[1] /= x[3];
+        y[0] /= y[3]; y[1] /= y[3];
+        z[0] /= z[3]; z[1] /= z[3];
+        // Convert to pixels
+        x[0] = (x[0] * .5 + .5) * Renderer.#canvas.width; 
+        x[1] = (x[1] * -.5 + .5) * Renderer.#canvas.height;
+        y[0] = (y[0] * .5 + .5) * Renderer.#canvas.width; 
+        y[1] = (y[1] * -.5 + .5) * Renderer.#canvas.height;
+        z[0] = (z[0] * .5 + .5) * Renderer.#canvas.width; 
+        z[1] = (z[1] * -.5 + .5) * Renderer.#canvas.height;
+        xAxis.style.left = Math.floor(x[0]) + 'px';
+        xAxis.style.top = Math.floor(x[1]) + 'px';
+        yAxis.style.left = Math.floor(y[0]) + 'px';
+        yAxis.style.top = Math.floor(y[1]) + 'px';
+        zAxis.style.left = Math.floor(z[0]) + 'px';
+        zAxis.style.top = Math.floor(z[1]) + 'px';
     }
 
-    removeMesh(name) {
-        this.#gl.deleteBuffer(this.#meshes[name]['buffers'][0]);
-        this.#gl.deleteBuffer(this.#meshes[name]['buffers'][1]);
-        this.#gl.deleteBuffer(this.#meshes[name]['buffers'][2]);
-        this.#gl.deleteVertexArray(this.#meshes[name]['vao']);
-        delete this.#meshes[name];
+    static addMesh(name, vertices, indices, normals) {
+        Renderer.#meshes[name] = {};
+        Renderer.#meshes[name].vertices = vertices;
+        Renderer.#meshes[name].indices = indices;
+        Renderer.#meshes[name].normals = normals;
+
+        Renderer.#meshes[name].vao = Renderer.#gl.createVertexArray();
+        Renderer.#meshes[name].buffers = [Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer()];
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vao);
+        // Binding position buffer
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, vertices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.phongPositionLocation);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.phongPositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        // Binding normal buffer
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[1]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, normals, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.normalLocation);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.normalLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        // Binding index buffer
+        Renderer.#gl.bindBuffer(Renderer.#gl.ELEMENT_ARRAY_BUFFER, Renderer.#meshes[name].buffers[2]);
+        Renderer.#gl.bufferData(Renderer.#gl.ELEMENT_ARRAY_BUFFER, indices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.bindVertexArray(null);
     }
 
-    render() {
-        this.#canvas.width = this.#canvas.clientWidth;
-        this.#canvas.height = this.#canvas.clientHeight;
-        this.#gl.viewport(0, 0, this.#canvas.width, this.#canvas.height);
+    static removeMesh(name) {
+        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[1]);
+        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[2]);
+        Renderer.#gl.deleteVertexArray(Renderer.#meshes[name].vao);
+        delete Renderer.#meshes[name];
+    }
+
+    static render() {
+        Renderer.#gl.viewport(0, 0, Renderer.#canvas.width, Renderer.#canvas.height);
 
         // Clear the canvas
-        this.#gl.clearColor(0.0, 0.0, 0.0, 0.0); // Make sure canvas is visible
-        this.#gl.clearDepth(1.0);
-        this.#gl.enable(this.#gl.DEPTH_TEST);
-        this.#gl.depthFunc(this.#gl.LEQUAL);
-        this.#gl.clear(this.#gl.COLOR_BUFFER_BIT | this.#gl.DEPTH_BUFFER_BIT);
+        Renderer.#gl.clearColor(0.0, 0.0, 0.0, 0.0); // Make sure canvas is visible
+        Renderer.#gl.clearDepth(1.0);
+        Renderer.#gl.enable(Renderer.#gl.DEPTH_TEST);
+        Renderer.#gl.depthFunc(Renderer.#gl.LEQUAL);
+        Renderer.#gl.clear(Renderer.#gl.COLOR_BUFFER_BIT | Renderer.#gl.DEPTH_BUFFER_BIT);
     
-        const axesVAO = this.#meshes['axes']['vao'];
-        const axesIndices = this.#meshes['axes']['indices'];
+        const axesVAO = Renderer.#meshes.axes.vao;
     
-        this.#gl.useProgram(this.#lineProgram);
-        this.#gl.bindVertexArray(axesVAO);
-        this.#gl.uniformMatrix4fv(this.#lineProjectionMatrixLocation, false, this.#worldViewProjectionMatrix);
-        this.#gl.lineWidth(1);
-        this.#gl.drawElements(this.#gl.LINES, 6, this.#gl.UNSIGNED_SHORT, 0);
+        Renderer.#gl.useProgram(Renderer.#lineProgram);
+        Renderer.#gl.bindVertexArray(axesVAO);
+        Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.lineProjectionMatrixLocation, false, Renderer.#matrices.worldViewProjectionMatrix);
+        Renderer.#gl.lineWidth(1);
+        Renderer.#gl.drawElements(Renderer.#gl.LINES, 6, Renderer.#gl.UNSIGNED_SHORT, 0);
+        Renderer.updateAxesDivs();
     
-        for (const name in this.#meshes) {
+        for (const name in Renderer.#meshes) {
             if (name === 'axes') continue;
-            const mesh = this.#meshes[name];
+            const mesh = Renderer.#meshes[name];
             const lightPos = [20,20,20];
     
-            this.#gl.useProgram(this.#phongProgram);
-            this.#gl.bindVertexArray(mesh.vao);
-            this.#gl.uniformMatrix4fv(this.#phongProjectionMatrixLocation, false, this.#worldViewProjectionMatrix);
-            this.#gl.uniformMatrix4fv(this.#worldMatrixLocation, false, this.#worldMatrix);
-            this.#gl.uniform3fv(this.#lightLocation, lightPos);
-            this.#gl.uniform3fv(this.#camLocation, this.#camPos);
-            this.#gl.uniform1f(this.#rangeLocation, this.#range);
+            Renderer.#gl.useProgram(Renderer.#phongProgram);
+            Renderer.#gl.bindVertexArray(mesh.vao);
+            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.phongProjectionMatrixLocation, false, Renderer.#matrices.worldViewProjectionMatrix);
+            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.worldMatrixLocation, false, Renderer.#matrices.worldMatrix);
+            Renderer.#gl.uniform3fv(Renderer.#varLocations.lightLocation, lightPos);
+            Renderer.#gl.uniform3fv(Renderer.#varLocations.camLocation, Renderer.#cameraConfig.camPos);
+            Renderer.#gl.uniform1f(Renderer.#varLocations.rangeLocation, Renderer.#range);
             console.log(`Drawing ${name}`);
-            this.#gl.drawElements(this.#gl.TRIANGLE_STRIP, mesh.indices.length, this.#gl.UNSIGNED_SHORT, 0);
+            Renderer.#gl.drawElements(Renderer.#gl.TRIANGLE_STRIP, mesh.indices.length, Renderer.#gl.UNSIGNED_SHORT, 0);
         }
     }
 }

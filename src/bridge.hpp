@@ -21,9 +21,9 @@ public:
 
     explicit Bridge(QObject *parent = nullptr) : QObject(parent) {}
 public slots:
-    QVariantList getVertices(const QString &id);
-    QVariantList getIndices(const QString &id);
-    QVariantList getNormals(const QString &id);
+    QString getVertices(const QString &id);
+    QString getIndices(const QString &id);
+    QString getNormals(const QString &id);
     bool updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
     bool createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
     bool deleteEvaluator(const QString &id);

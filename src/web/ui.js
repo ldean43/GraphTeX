@@ -1,43 +1,51 @@
 class UI {
+    static table;
 
-    constructor() {
-        this.table = document.querySelector('table');
-        this.init();
-        document.getElementById('eq1').addEventListener('input', () => this.updateDisplay(1));
-        document.getElementById('addeq').onclick = () => this.addEquation();
-        document.querySelector('#label1 button').onclick = () => this.viewLatex(1);
-        document.querySelector('#display1 button').onclick = () => this.deleteEquation(1);
-    }
+    static async init() {
+        // Initialize event listeners for first 2 rows of the table
+        UI.table = document.querySelector('table');
+        document.querySelector('#display1 button').onclick = () => UI.deleteEquation(1);
+        document.querySelector('#label1 button').onclick = () => UI.viewLatex(1);
+        document.getElementById('equation1').addEventListener('input', () => UI.updateDisplay(1));
+        document.getElementById('addEquation').onclick = () => UI.addEquation();
 
-    async init() {
-        const res = await bridge.createEvaluator('\\sin(x)', 'eq1', {'x': 0, 'y': 0});
+        //
+        let start = performance.now(); 
+        const res = await bridge.createEvaluator('\\sin(x)', 'equation1', {'x': 0, 'y': 0});
+        console.log(`Awaited bridge.createEvaluator for ${performance.now() - start} milliseconds.`);
         if (res) {
-            const vertices = new Float32Array(await bridge.getVertices(`eq1`));
-            const indices = new Int16Array(await bridge.getIndices(`eq1`));
-            const normals = new Float32Array(await bridge.getNormals(`eq1`));
-            renderer.addMesh(`eq1`, vertices, indices, normals);
+            let start = performance.now();
+            const vertices = base64toFloat32(await bridge.getVertices('equation1'));
+            console.log(`Awaited bridge.getVertices for ${performance.now() - start} milliseconds.`);
+            const indices = base64toInt16(await bridge.getIndices('equation1'));
+            const normals = base64toFloat32(await bridge.getNormals('equation1'));
+            Renderer.addMesh('equation1', vertices, indices, normals);
+            Renderer.render();
         }
     }
 
     // Update the display with the current equation
-    async updateDisplay(num) {
-        const equation = document.getElementById(`eq${num}`).value;
+    static async updateDisplay(num) {
+        // Update MathJaX
+        const equation = document.getElementById(`equation${num}`).value;
         const display = document.getElementById(`display${num}`).querySelector('div');
         display.textContent = '\\[\\displaystyle{' + equation + '}\\]';
-        MathJax.typesetPromise(); // Update MathJax
-        const res = await bridge.updateEvaluator(equation, `eq${num}`, {'x': 0, 'y': 0}); // Update C++ evaluator
+        MathJax.typesetPromise();
+
+        // Update C++ evaluator, generate mesh, and render
+        const res = await bridge.updateEvaluator(equation, `equation${num}`, {'x': 0, 'y': 0}); // Update C++ evaluator
         if (res) {
-            const vertices = new Float32Array(await bridge.getVertices(`eq${num}`));
-            const indices = new Int16Array(await bridge.getIndices(`eq${num}`));
-            const normals = new Float32Array(await bridge.getNormals(`eq${num}`));
-            renderer.addMesh(`eq${num}`, vertices, indices, normals);
-            renderer.render();
+            const vertices = base64toFloat32(await bridge.getVertices(`equation${num}`));
+            const indices = base64toInt16(await bridge.getIndices(`equation${num}`));
+            const normals = base64toFloat32(await bridge.getNormals(`equation${num}`));
+            Renderer.addMesh(`equation${num}`, vertices, indices, normals);
+            Renderer.render();
         }
     }
 
     // Toggle the visibility of the LaTeX input area
-    viewLatex(num) {
-        const row = document.getElementById(`treq${num}`);
+    static viewLatex(num) {
+        const row = document.getElementById(`rowEquation${num}`);
         const cell = document.getElementById(`label${num}`);
         const button = cell.querySelector('button');
 
@@ -52,99 +60,103 @@ class UI {
         }
     }
 
-    // Add a new equation row
-    async addEquation() {
-        const num = this.table.rows.length / 2 + 1; // Keep count of equations
+    // Initialize a new equation
+    static async addEquation() {
+        const num = this.table.rows.length / 2 + 1;
 
         // Create first row
         const row1 = document.createElement('tr');
-        row1.id = `trd${num}`;
+        row1.id = `rowDisplay${num}`;
         row1.innerHTML = `
-            <td id="label${num}" class="label" rowspan="1">
+            <td id='label${num}' class='label' rowspan='1'>
                 <div>${num}</div>
-                <button class="viewbutton">▼</button>
+                <button class='viewButton'>▼</button>
             </td>
-            <td id="display${num}">
+            <td id='display${num}'>
                 <div>\\[\\displaystyle{\\displaylines{\\sin(x)}}\\]</div>
-                <button class="deleq">✖</button>
+                <button class='deleteEquation'>✖</button>
             </td>`;
 
         // Create second row (hidden by default)
         const row2 = document.createElement('tr');
-        row2.id = `treq${num}`;
+        row2.id = `rowEquation${num}`;
         row2.style.display = 'none';
         row2.innerHTML = `
-            <td colspan="2">
-                <textarea id="eq${num}" autofocus>\\sin(x)</textarea>
+            <td colspan='2'>
+                <textarea id='equation${num}' autofocus>\\sin(x)</textarea>
             </td>`;
 
-        // Append rows to table
-        this.table.appendChild(row1);
-        this.table.appendChild(row2);
+        // Append rows, update MathJaX
+        UI.table.appendChild(row1);
+        UI.table.appendChild(row2);
         MathJax.typesetPromise();
 
-        // Set event listeners and create C++ evaluator
-        document.getElementById(`eq${num}`).addEventListener('input', () => this.updateDisplay(num));
-        document.querySelector(`#label${num} button`).onclick = () => this.viewLatex(num);
-        document.querySelector(`#display${num} button`).onclick = () => this.deleteEquation(num);
-        const res = await bridge.createEvaluator('\\sin(x)', `eq${num}`, {'x': 0, 'y': 0});
+        // Set event listeners
+        document.getElementById(`equation${num}`).addEventListener('input', () => UI.updateDisplay(num));
+        document.querySelector(`#label${num} button`).onclick = () => UI.viewLatex(num);
+        document.querySelector(`#display${num} button`).onclick = () => UI.deleteEquation(num);
+
+        // Create C++ evaluator, generate mesh, and render
+        const res = await bridge.createEvaluator('\\sin(x)', `equation${num}`, {'x': 0, 'y': 0});
         if (res) {
-            const vertices = new Float32Array(await bridge.getVertices(`eq${num}`));
-            const indices = new Int16Array(await bridge.getIndices(`eq${num}`));
-            const normals = new Float32Array(await bridge.getNormals(`eq${num}`));
-            renderer.addMesh(`eq${num}`, vertices, indices, normals);
-            renderer.render();
+            const vertices = base64toFloat32(await bridge.getVertices(`equation${num}`));
+            const indices = base64toInt16(await bridge.getIndices(`equation${num}`));
+            const normals = base64toFloat32(await bridge.getNormals(`equation${num}`));
+            Renderer.addMesh(`equation${num}`, vertices, indices, normals);
+            Renderer.render();
         }
     }
 
-    // Delete an equation row
-    async deleteEquation(num) {
-        const row1 = document.getElementById(`trd${num}`);
-        const row2 = document.getElementById(`treq${num}`);
+    // Delete an equation
+    static async deleteEquation(num) {
+        const row1 = document.getElementById(`rowDisplay${num}`);
+        const row2 = document.getElementById(`rowEquation${num}`);
 
-        bridge.deleteEvaluator(`eq${num}`);
-        renderer.removeMesh(`eq${num}`);
+        // Remove equation and meshes from C++ maps, delete mesh from renderer
+        bridge.deleteEvaluator(`equation${num}`);
+        Renderer.removeMesh(`equation${num}`);
         row1.remove();
         row2.remove();
     
+        // Update IDs and event listeners for remaining equations
         for (let i = num + 1; i <= this.table.rows.length / 2 + 1; i++) {
-            const oldRow1 = document.getElementById(`trd${i}`);
-            const oldRow2 = document.getElementById(`treq${i}`);
+            const oldRow1 = document.getElementById(`rowDisplay${i}`);
+            const oldRow2 = document.getElementById(`rowEquation${i}`);
     
-            // Clone and update the first row
+            // Clone and update the first row with decremented IDs
             const newRow1 = oldRow1.cloneNode(true);
-            newRow1.id = `trd${i - 1}`;
             const newLabel = newRow1.querySelector('.label');
+            const newDisplay = newRow1.querySelector(`#display${i}`);
+            newRow1.id = `rowDisplay${i - 1}`;
             newLabel.id = `label${i - 1}`;
             newLabel.querySelector('div').textContent = i - 1;
-            const newDisplay = newRow1.querySelector(`#display${i}`);
             newDisplay.id = `display${i - 1}`;
     
             // Clone and update the second row
             const newRow2 = oldRow2.cloneNode(true);
-            newRow2.id = `treq${i - 1}`;
             const newTextarea = newRow2.querySelector('textarea');
-            newTextarea.id = `eq${i - 1}`;
+            newRow2.id = `rowEquation${i - 1}`;
+            newTextarea.id = `equation${i - 1}`;
     
             // Replace old with new
-            this.table.replaceChild(newRow1, oldRow1);
-            this.table.replaceChild(newRow2, oldRow2);
+            UI.table.replaceChild(newRow1, oldRow1);
+            UI.table.replaceChild(newRow2, oldRow2);
     
-            // Reattach clean event listeners and update C++ evaluator
+            // Reattach clean event listeners
             newLabel.querySelector('button').onclick = () => this.viewLatex(i - 1);
             newDisplay.querySelector('button').onclick = () => this.deleteEquation(i - 1);
             newTextarea.addEventListener('input', () => this.updateDisplay(i - 1));
-            await bridge.updateEvaluator(newTextarea.value, `eq${i - 1}`, {'x': 0, 'y': 0});
-            const vertices = new Float32Array(await bridge.getVertices(`eq${i - 1}`));
-            const indices = new Int16Array(await bridge.getIndices(`eq${i - 1}`));
-            const normals = new Float32Array(await bridge.getNormals(`eq${i - 1}`));
-            renderer.addMesh(`eq${num}`, vertices, indices, normals);
-            if (i == this.table.rows.length / 2 + 1) {
-                bridge.deleteEvaluator(`eq${i}`);
-                bridge.removeMesh(`eq${i}`);
-            }
+
+            // Update the C++ evaluator and generate new mesh
+            await bridge.updateEvaluator(newTextarea.value, `equation${i - 1}`, {'x': 0, 'y': 0});
+            const vertices = base64toFloat32(await bridge.getVertices(`equation${i - 1}`));
+            const indices = base64toInt16(await bridge.getIndices(`equation${i - 1}`));
+            const normals = base64toFloat32(await bridge.getNormals(`equation${i - 1}`));
+            Renderer.addMesh(`equation${num}`, vertices, indices, normals);
         }
+        bridge.deleteEvaluator(`equation${UI.table.rows.length / 2 + 1}`);
+        Renderer.removeMesh(`equation${UI.table.rows.length / 2 + 1}`);
         MathJax.typesetPromise();
-        renderer.render();
+        Renderer.render();
     }
 }
