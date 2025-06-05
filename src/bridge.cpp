@@ -1,5 +1,6 @@
 #include "bridge.hpp"
 #include "geometry.hpp"
+#include <cmath>
 
 QString Bridge::getVertices(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);

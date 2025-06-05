@@ -5,30 +5,35 @@
 #include <unordered_set>
 
 void Lexer::advance() {
-    if (it_ != (end_ - 1)) {
+    if (it_ < end_ - 1) {
         c_ = *(++it_);
     } else {
         ++it_;
+        c_ = '\0';
     }
     return;
 }
 
+// Handles \sqrt[]{}, \frac{}{}, \log_{}{}
 void Lexer::implicitMultHelper(std::vector<std::string>& new_toks, unsigned int& i) {
     std::string next;
 
-    if (i < tokens_.size()) { new_toks.push_back(tokens_[i]); }
-    implicitMult(new_toks, ++i);
-    if (++i < tokens_.size()) { new_toks.push_back(tokens_[i]); }
-    implicitMult(new_toks, ++i);
-    if (i < tokens_.size() && tokens_[i] == "}") {
-        if (i < tokens_.size() - 1) {
-            next = tokens_[i + 1];
-            if (is_float(next) || is_var(next) || next == "{" || next == "(" ||
-                next == "[" || (valid_cmds_.count(next) && next != "right|")) {
-                new_toks.push_back("*");
-            }
+    if (i < tokens_.size()) { 
+        new_toks.push_back(tokens_[i]); // Push first opening brace
+    }
+    implicitMult(new_toks, ++i); // Retokenize ...}
+    if (++i < tokens_.size()) { 
+        new_toks.push_back(tokens_[i]); // Push second opening brace
+    }
+    implicitMult(new_toks, ++i); // Retokenize ...}
+    if (i < tokens_.size() - 1 && tokens_[i] == "}") {
+        next = tokens_[i + 1];
+        if (is_float(next) || is_var(next) ||
+            next == "{" || next == "(" || next == "[" || 
+            (valid_cmds_.count(next) && next != "right|")) {
+            new_toks.push_back("*");
         }
-        implicitMult(new_toks, ++i);
+        implicitMult(new_toks, ++i); // Retokenize remaining tokens
     }
     return;
 }
@@ -38,119 +43,119 @@ void Lexer::implicitMult(std::vector<std::string>& new_toks, unsigned int& i) {
     std::string next;
 
     if (i < tokens_.size()) { 
-        new_toks.push_back(tokens_[i]);
-    } else { return; }
+        new_toks.push_back(tokens_[i]); // Push current token
+    } else { 
+        return; 
+    }
 
-    if (tokens_[i] == "}" || tokens_[i] == ")" || tokens_[i] == "]" ||
-        tokens_[i] == "right|") {
+    if (tokens_[i] == "}" || tokens_[i] == ")" || tokens_[i] == "]" || tokens_[i] == "right|") {
         return;
     } else if (tokens_[i] == "frac") {
         implicitMultHelper(new_toks, ++i); 
     } else if (tokens_[i] == "{" || tokens_[i] == "(" || tokens_[i] == "[") {
-        // checking inside braces
-        implicitMult(new_toks, ++i);
+        implicitMult(new_toks, ++i); // Retokenize ...}
         if (i < tokens_.size() - 1) {
             next = tokens_[i + 1];
-            if (is_float(next) || is_var(next) || next == "{" || next == "(" ||
-                next == "[" || (valid_cmds_.count(next) && next != "right|")) {
+            if (is_float(next) || is_var(next) || 
+                next == "{" || next == "(" || next == "[" || 
+                (valid_cmds_.count(next) && next != "right|")) {
                 new_toks.push_back("*");
             }
         } 
     } else if (i < tokens_.size() - 1) {
         next = tokens_[i + 1];
-        // implicit mult after num?
-        if (is_float(tokens_[i])) {
-            if (is_var(next) || next == "{" || next == "(" || next == "[" ||
+        if (is_float(tokens_[i])) { // Implicit mult after number
+            if (is_var(next) || 
+                next == "{" || next == "(" || next == "[" ||
                 (valid_cmds_.count(next) && next != "right|")) {
                 new_toks.push_back("*");
             }
-        // handle special case for log with arbitrary base
-        } else if (tokens_[i] == "log") {
+        } else if (tokens_[i] == "log") { // Implicit mult after log with arbitrary base
             if (next == "_") { 
                 new_toks.push_back(tokens_[++i]); 
                 implicitMultHelper(new_toks, ++i);
             }
-        } else if (tokens_[i] == "sqrt") {
+        } else if (tokens_[i] == "sqrt") { // Implicit mult after sqrt with arbitrary root
             if (next == "[") {
                 implicitMultHelper(new_toks, ++i);
             }
-        // handle implicit multiplaction following variable or delim
-        } else if (is_var(tokens_[i])) {
-            if (is_float(next) || is_var(next) || next == "{" || next == "(" || next == "[" ||
+        } else if (is_var(tokens_[i])) { // Implicit mult after variable
+            if (is_float(next) || is_var(next) || 
+                next == "{" || next == "(" || next == "[" ||
                 (valid_cmds_.count(next) && next != "right|")) {
                 new_toks.push_back("*");
             }
         }
     }
-    implicitMult(new_toks, ++i);
+    implicitMult(new_toks, ++i); // Retokenize remaining tokens
     return;
 }
 
 void Lexer::lexHelper() {
     std::string command;
+    bool negative = false;
 
     while (it_ != end_) {
 
-        // Handle whitespace
-        if (isspace(c_)) {
+        if (isspace(c_)) { // Ignore whitespace
             advance();
-            continue;
-        }
-        // operator_s
-        if (c_ == '\\') {
+        } else if (c_ == '\\') { // Handle commands, they always start with \ 
             advance();
             while (it_ != end_ && (isalpha(c_) || c_ == '|')) {
                 command += c_;
                 advance();
             }
-            // Check if command is valid
             if (valid_cmds_.count(command)) {
                 tokens_.push_back(command);
                 command = "";
-                continue;
             } else {
-                throw std::runtime_error 
-                ("lexing error: invalid operator " + command);
+                throw std::runtime_error("lexing error: invalid operator " + command);
             }
         }
-        /* command will typically be followed by a symbol, symbol logic
-        immediately after operator_ logic to optimize time */
-        if (valid_syms_.count(c_)) {
-            if (c_ == '-') {
-                if (tokens_.empty() || (!is_float(tokens_.back()) &&
-                    !is_var(tokens_.back()))) {
-                    tokens_.push_back("0");
+        else if (valid_syms_.count(c_)) { // Handle operators and delimeters
+            unsigned int n = 0;
+            if (c_ == '-' || c_ == '+') { // For inputs like ---3 = -3 or ++-3 = -3
+                while (it_ != end_ && (c_ == '-' || c_ == '+')) {
+                    if (c_ == '-') { n++; }
+                    advance();
                 }
+                if (n % 2) {
+                    if (tokens_.empty() || tokens_.back() == "{" || tokens_.back() == "(" || tokens_.back() == "[") {
+                        tokens_.push_back("0");
+                    }
+                    tokens_.push_back("-");
+                } else {
+                    if (!(tokens_.empty() || tokens_.back() == "{" || tokens_.back() == "(" || tokens_.back() == "[")) {
+                        tokens_.push_back("+");
+                    }
+                }
+            } else {
+                tokens_.push_back(std::string(1, c_));
+                advance();
             }
-            tokens_.push_back(std::string(1, c_));
-            advance();
-            continue;
         }
-        // Variables
-        if (isalpha(c_)) {
+        else if (isalpha(c_)) { // Handle single character variables
             tokens_.push_back(std::string(1,c_));
             advance();
-            continue;
         }
-        // Numbers
-        if (std::isdigit(c_) || c_ == '.') {
+        else if (std::isdigit(c_) || c_ == '.') { // Handle numbers
             std::string number(1,c_);
             bool has_decimal = c_ == '.';
             advance();
             while (it_ != end_ && (std::isdigit(c_) || c_ == '.')) {
-                // Check for two decimals
-                if (c_ == '.') { 
+                if (c_ == '.') {
                     if (has_decimal) {
-                        throw std::runtime_error ("lexing error: invalid input");
+                        throw std::runtime_error ("lexing error: invalid number, two decimals");
                     } else {
                         has_decimal = true;
                     }
                 }
-                // Append digit to number
                 number += c_;
                 advance();
             }
             tokens_.push_back(number);
+        } else {
+            throw std::runtime_error("lexing error: invalid token");
         }
     }
     return;

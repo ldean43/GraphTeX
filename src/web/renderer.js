@@ -18,12 +18,15 @@ class Renderer {
         camLocation: undefined,
         rangeLocation: undefined,
         worldMatrixLocaiton: undefined,
-        phongProjectionMatrixLocation: undefined
+        phongProjectionMatrixLocation: undefined,
+        stencilPositionLocation: undefined,
+        stencilRangeLocation: undefined
     }
     static #cameraConfig = {
         yaw: 0,
         pitch: 0,
-        camPos: undefined
+        camPos: undefined,
+        distance: 10
     }
     static #shaders = {
         linevs: `#version 300 es
@@ -52,6 +55,7 @@ class Renderer {
         out vec3 v_to_light;
         out vec3 v_to_cam;
         out vec3 v_position;
+        out vec3 v_raw;
 
         uniform mat4 u_matrix;
         uniform mat4 u_world;
@@ -61,6 +65,7 @@ class Renderer {
         void main() {
             v_normal = mat3(u_world) * a_normal;
             v_position = (u_world * vec4(a_position, 1.0)).xyz;
+            v_raw = a_position;
             v_to_light = u_light_pos - v_position;
             v_to_cam = u_cam_pos - v_position;
             gl_Position = u_matrix * vec4(a_position, 1);
@@ -72,6 +77,7 @@ class Renderer {
         in vec3 v_to_light;
         in vec3 v_to_cam;
         in vec3 v_position;
+        in vec3 v_raw;
 
         out vec4 fragColor;
         
@@ -89,10 +95,10 @@ class Renderer {
             vec3 ambient = vec3(0.1);
             vec3 color = ambient + diffuse * base_color + specular * vec3(1.0, 1.0, 1.0);
             color = clamp(color, 0.0, 1.0);
-
-            fragColor = vec4(color, 1.0);
+            fragColor = vec4(color, 1);
         }`
     };
+    static #stencilProgram;
     static #lineProgram;
     static #phongProgram;
     static #displayWidth;
@@ -107,6 +113,10 @@ class Renderer {
         Renderer.#gl = canvas.getContext('webgl2');
         Renderer.#canvas.width = Renderer.#canvas.clientWidth;
         Renderer.#canvas.height = Renderer.#canvas.clientHeight;
+        Renderer.#gl.enable(Renderer.#gl.DEPTH_TEST);
+        Renderer.#gl.enable(Renderer.#gl.STENCIL_TEST);
+        Renderer.#gl.enable(Renderer.#gl.SAMPLE_ALPHA_TO_COVERAGE);
+        Renderer.#gl.clearStencil(0);
 
         if (!Renderer.#gl) {
             console.error('WebGL not supported, falling back on experimental-webgl');
@@ -160,10 +170,10 @@ class Renderer {
         const fov = Math.PI / 4;
         const aspect = Renderer.#canvas.clientWidth / Renderer.#canvas.clientHeight;
         const zNear = 0.1;
-        const zFar = 1000;
-        const distance = Renderer.#range / Math.tan(fov / 2);
+        const zFar = 100;
+        const camDistance = Renderer.#cameraConfig.distance / Math.tan(fov / 2);
         Renderer.#matrices.projectionMatrix = m4.perspective(fov, aspect, zNear, zFar);
-        Renderer.#cameraConfig.camPos = m4.scaleVector(m4.normalize([0,0,1]), distance);
+        Renderer.#cameraConfig.camPos = m4.scaleVector(m4.normalize([0,0,1]), camDistance);
         Renderer.#matrices.cameraMatrix = m4.inverse(m4.lookAt(Renderer.#cameraConfig.camPos, [0, 0, 0], [0, 1, 0]));
         Renderer.#matrices.worldMatrix = m4.xRotation(-Math.PI/2);
         Renderer.#matrices.worldViewProjectionMatrix = 
@@ -206,15 +216,15 @@ class Renderer {
 
         Renderer.#canvas.addEventListener('wheel', (e) => {
             const delta = e.deltaY;
-            Renderer.#range += delta * .01;
-            Renderer.#range = Math.max(Renderer.#range, 0.1);
-            Renderer.#range = Math.min(Renderer.#range, 100);
+            Renderer.#cameraConfig.distance += delta * .01;
+            Renderer.#cameraConfig.distance = Math.max(Renderer.#cameraConfig.distance, 1);
+            Renderer.#cameraConfig.distance = Math.min(Renderer.#cameraConfig.distance, 20);
             Renderer.updateCameraMatrix();
         });
     }
 
     static updateCameraMatrix() {
-        const camDistance = (Renderer.#range) / Math.tan(Math.PI / 4 / 2);
+        const camDistance = (Renderer.#cameraConfig.distance) / Math.tan(Math.PI / 4 / 2);
         // spherical coordinates
         const x = camDistance * Math.cos(Renderer.#cameraConfig.pitch) * Math.sin(Renderer.#cameraConfig.yaw);
         const y = camDistance * Math.sin(Renderer.#cameraConfig.pitch);
@@ -304,7 +314,6 @@ class Renderer {
         // Clear the canvas
         Renderer.#gl.clearColor(0.0, 0.0, 0.0, 0.0); // Make sure canvas is visible
         Renderer.#gl.clearDepth(1.0);
-        Renderer.#gl.enable(Renderer.#gl.DEPTH_TEST);
         Renderer.#gl.depthFunc(Renderer.#gl.LEQUAL);
         Renderer.#gl.clear(Renderer.#gl.COLOR_BUFFER_BIT | Renderer.#gl.DEPTH_BUFFER_BIT);
     
@@ -316,11 +325,12 @@ class Renderer {
         Renderer.#gl.lineWidth(1);
         Renderer.#gl.drawElements(Renderer.#gl.LINES, 6, Renderer.#gl.UNSIGNED_SHORT, 0);
         Renderer.updateAxesDivs();
-    
         for (const name in Renderer.#meshes) {
             if (name === 'axes') continue;
             const mesh = Renderer.#meshes[name];
             const lightPos = [20,20,20];
+
+            Renderer.#gl
     
             Renderer.#gl.useProgram(Renderer.#phongProgram);
             Renderer.#gl.bindVertexArray(mesh.vao);

@@ -4,13 +4,12 @@
 #include <stdexcept>
 
 bool Parser::advance() {
-    if (it_ != (end_ - 1)) {
-        if (it_ != end_) {
-            tok_ = *(++it_);
-            return true;
-        }
+    if (it_ < end_ - 1) {
+        tok_ = *(++it_);
+        return true;
     } else {
         ++it_;
+        tok_ = "";
     }
     return false;
 }
@@ -324,7 +323,7 @@ Type Parser::parseStartDelim() {
 
 void Parser::parseEndDelim() {
     if (tok_ == ")") {
-        while (!operator_.empty() && operator_.top() != "(") {
+        while (!(operator_.empty() || operator_.top() == "(")) {
             if (operator_.top() == "{" || operator_.top() == "[" || 
                 operator_.top() == "left|") {
                 break;
@@ -336,7 +335,7 @@ void Parser::parseEndDelim() {
         }
         operator_.pop();
     } else if (tok_ == "}") {
-        while (!operator_.empty() && operator_.top() != "{") {
+        while (!(operator_.empty() || operator_.top() == "{")) {
             if (operator_.top() == "(" || operator_.top() == "[" || 
                 operator_.top() == "left|") {
                 break;
@@ -348,7 +347,7 @@ void Parser::parseEndDelim() {
         }
         operator_.pop();
     } else if (tok_ == "]") {
-        while (!operator_.empty() && operator_.top() != "[") {
+        while (!(operator_.empty() || operator_.top() == "[")) {
             if (operator_.top() == "(" || operator_.top() == "{" || 
                 operator_.top() == "left|") {
                 break;
@@ -360,7 +359,7 @@ void Parser::parseEndDelim() {
         }
         operator_.pop();
     } else if (tok_ == "right|") {
-        while (!operator_.empty() && operator_.top() != "left|") {
+        while (!(operator_.empty() || operator_.top() == "left|")) {
             if (operator_.top() == "(" || operator_.top() == "[" || 
                 operator_.top() == "{") {
                 break;
@@ -381,7 +380,7 @@ void Parser::parseEndDelim() {
     type of the last expression parsed.
 
     For functions that don't propogate the presence of Type::OP_BRACE, their
-    render still maintains order of operations so there is no need to throw std::runtime_error an error.
+    render still maintains order of operations so there is no need to throw an error.
     If there is still a nested operation in braces within the argument, 
     it will be caught by a deeper recursive call.
 */

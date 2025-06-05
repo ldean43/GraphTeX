@@ -3,7 +3,6 @@
 
 bool is_float(std::string str) {
     bool has_decimal = false;
-    
     for (size_t i = 0; i < str.length(); i++) {
         if (str[i] == '.') { 
             if (has_decimal) {

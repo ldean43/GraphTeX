@@ -40,6 +40,10 @@ struct vec3 {
         return vec3(0, 0, 0);
     }
 
+    float length() const {
+        return sqrt(x * x + y * y + z * z);
+    }
+
     vec3 cross(const vec3& other) const {
         return vec3(
             y * other.z - z * other.y,
