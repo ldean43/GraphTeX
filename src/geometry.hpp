@@ -6,8 +6,10 @@
 #include <QDebug>
 #include <chrono>
 #include <iostream>
+#include <thread>
 #include <cstdint>
 #include <algorithm>
+#include <mutex>
 #include <vector>
 
 class Geometry {
@@ -16,33 +18,18 @@ private:
     int step_;
     int range_;
     double step_size_;
+    std::mutex mutex_;
 
-    bool crossDiscontinuity(vec3 v0, vec3 v1, vec3 v2);
+    void generateVertices(int minrow, int maxrow);
+    void clipTriangles(int minrow, int maxrow, bool clip);
+    inline void setThreadName(const std::string& name);
+    bool crossDiscontinuity(vec3 v0, vec3 v1, vec3 v2, vec3 prevNorm);
     void pushVertex(vec3 v0, vec3 v1, vec3 v2, std::vector<float>& verts);
-    void generateVertices();
-    void clipTriangles();
-    void generateNormals();
+    void pushNormal(vec3 v0, vec3 v1, vec3 v2, std::unordered_map<vec3, vec3, vec3::Vec3Hash>& normal_map);
 public:
-    std::vector<float> vertices_; // All Vertices
-    std::vector<uint32_t> indices_; // Triangle Strip Indices
-    std::vector<float> normals_; // Normals
-    
-    explicit Geometry(Evaluator* evaluator) : evaluator_(evaluator) {
-        auto start = std::chrono::high_resolution_clock::now();
-        range_ = 10;
-        step_ = 250;
-        step_size_ = 2.0f * range_ / (step_ - 1);
-        vertices_.resize(3 * step_ * step_);
-        auto end = std::chrono::high_resolution_clock::now();
-        generateVertices();
-        std::chrono::duration<double> elapsed = end - start;
-        std::cout << "generateVertices finished in: " << elapsed.count() << " seconds.\n";
-        generateNormals();
-    }
-    explicit Geometry(Evaluator* evaluator, float range) : evaluator_(evaluator) {
-        range_ = range;
-        step_ = (2*range)/(range_ * 0.01);
-        generateNormals();
-    }
+    std::vector<float> tempVertices_;
+    std::vector<float> vertices_;
+    std::vector<float> normals_;
+    explicit Geometry(Evaluator* evaluator, int step, int range, bool clip);
     ~Geometry() {}
 };

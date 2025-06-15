@@ -17,14 +17,13 @@ public:
     std::unordered_map<QString, Evaluator*> evaluators_;
     std::unordered_map<QString, std::vector<float>> vertices_;
     std::unordered_map<QString, std::vector<float>> normals_;
-    std::unordered_map<QString, std::vector<uint16_t>> indices_;
 
     explicit Bridge(QObject *parent = nullptr) : QObject(parent) {}
 public slots:
     QString getVertices(const QString &id);
-    QString getIndices(const QString &id);
     QString getNormals(const QString &id);
-    bool updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
-    bool createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars);
+    bool updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars, QVariant step_q, QVariant range_q, QVariant clip_z);
+    bool createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars, QVariant step_q, QVariant range_q, QVariant clip_z);
     bool deleteEvaluator(const QString &id);
+    void updateMesh(int range, int step, bool clip_z);
 };

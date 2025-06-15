@@ -16,16 +16,12 @@ QString Bridge::getNormals(const QString &id) {
     return base64;
 }
 
-QString Bridge::getIndices(const QString &id) {
-    QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QByteArray raw(reinterpret_cast<const char*>(indices_[norm].data()), indices_[norm].size() * sizeof(uint16_t));
-    QString base64 = QString::fromLatin1(raw.toBase64());
-    return base64;
-}
-
-bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
+bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars, QVariant step_q, QVariant range_q, QVariant clip_z) {
     // Normalize the ID to ensure consistent hashing
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
+    int step = step_q.toInt();
+    int range = range_q.toInt();
+    bool clip = clip_z.toBool();
 
     if (latex.isEmpty()) {
         qDebug() << "Error: Empty LaTeX string";
@@ -50,10 +46,9 @@ bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVar
             }
 
             // Generate the mesh
-            Geometry geometry(evaluators_[norm]);
+            Geometry geometry(evaluators_[norm], step, range, clip);
             qDebug() << geometry.vertices_.size();
             vertices_[norm] = geometry.vertices_;
-            indices_[norm] = geometry.indices_;
             normals_[norm] = geometry.normals_;
             qDebug() << "Mesh updated for ID:" << norm;
             return true;
@@ -62,13 +57,16 @@ bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVar
             return false;
         }
     } else {
-        return createEvaluator(latex, id, vars);
+        return createEvaluator(latex, id, vars, step, range, clip);
     }
 }
 
-bool Bridge::createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars) {
+bool Bridge::createEvaluator(const QString &latex, const QString &id, const QVariantMap &vars, QVariant step_q, QVariant range_q, QVariant clip_z) {
     // Normalize the ID to ensure consistent hashing
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
+    int step = step_q.toInt();
+    int range = range_q.toInt();
+    bool clip = clip_z.toBool();
 
     try {
         // Create a new evaluator
@@ -85,10 +83,9 @@ bool Bridge::createEvaluator(const QString &latex, const QString &id, const QVar
         }
 
         // Generate the mesh
-        Geometry geometry(evaluators_[norm]);
+        Geometry geometry(evaluators_[norm], step, range, clip);
         vertices_[norm] = geometry.vertices_;
         normals_[norm] = geometry.normals_;
-        indices_[norm] = geometry.indices_;
         qDebug() << "Mesh updated for ID:" << norm;
         return true;
     } catch (const std::exception& e) {
@@ -105,8 +102,20 @@ bool Bridge::deleteEvaluator(const QString &id) {
         delete evaluators_[norm];
         evaluators_.erase(norm);
         vertices_.erase(norm);
-        indices_.erase(norm);
         return true;
     }
     return false;
+}
+
+void Bridge::updateMesh(int range, int step, bool clip_z) {
+    for (std::pair<QString, Evaluator*> pair : evaluators_) {
+        QString id = pair.first;
+        Evaluator* evaluator = pair.second;
+
+        // Update the geometry with the new range and step
+        Geometry geometry(evaluator, step, range, clip_z);
+        vertices_[id] = geometry.vertices_;
+        normals_[id] = geometry.normals_;
+        qDebug() << "Step and range updated for ID:" << id;
+    }
 }

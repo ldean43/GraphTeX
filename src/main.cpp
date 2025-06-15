@@ -20,17 +20,10 @@ int main(int argc, char *argv[]) {
     QWebEngineView view;
     view.page()->setWebChannel(&channel);
     view.settings()->setAttribute(QWebEngineSettings::LocalContentCanAccessFileUrls, true);
-    
-    // DevTools view
-    /*
-    QWebEngineView *devTools = new QWebEngineView();
-    view.page()->setDevToolsPage(devTools->page());
-    devTools->resize(800, 600);
-    devTools->show();*/
 
     // Set the URL to the HTML page using the absolute path of the current directory
     QDir dir(QCoreApplication::applicationDirPath());
-    QUrl url = QUrl::fromLocalFile(dir.filePath("../src/web/index.html"));
+    QUrl url = QUrl::fromLocalFile(dir.filePath("../Resources/index.html"));
     view.setUrl(url);
 
     // Set the size of the window

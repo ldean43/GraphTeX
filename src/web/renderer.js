@@ -3,6 +3,12 @@ class Renderer {
     static #gl;
     static #canvas;
     static #meshes;
+    static activeShader = 'diffuse';
+    static lightPos = [20 * Math.cos(Math.PI/2) * Math.sin(3 * Math.PI/2),
+                       20 * Math.sin(Math.PI/2),
+                       20 * Math.cos(Math.PI/2) * Math.cos(3 * Math.PI/2)];
+    static lightXRotation = Math.PI/2;
+    static lightYRotation = 3*Math.PI/2;
     // properties for projection and view matrices
     static #matrices = {
         worldMatrix: undefined,
@@ -10,17 +16,19 @@ class Renderer {
         projectionMatrix: undefined
     }
     static #varLocations = {
+        wireframePositionLocation: undefined,
+        wireframeProjectionMatrixLocation: undefined,
         linePositionLocation: undefined,
         lineProjectionMatrixLocation: undefined,
         phongPositionLocation: undefined,
         normalLocation: undefined,
         lightLocation: undefined,
         camLocation: undefined,
-        rangeLocation: undefined,
-        worldMatrixLocaiton: undefined,
+        colorLocation: undefined,
+        wireframeColorLocation: undefined,
+        worldMatrixLocation: undefined,
         phongProjectionMatrixLocation: undefined,
-        stencilPositionLocation: undefined,
-        stencilRangeLocation: undefined
+        specularLocation: undefined
     }
     static #cameraConfig = {
         yaw: 0,
@@ -29,6 +37,28 @@ class Renderer {
         distance: 10
     }
     static #shaders = {
+        wireframevs: `#version 300 es
+        precision highp float;
+        in vec3 a_position;
+        uniform mat4 u_matrix;
+        out vec3 bary;
+        void main() {
+            int id = gl_VertexID % 3;
+            if (id == 0) bary = vec3(1, 0, 0);
+            else if (id == 1) bary = vec3(0, 1, 0);
+            else bary = vec3(0, 0, 1);
+            gl_Position = u_matrix * vec4(a_position, 1);
+        }`,
+        wireframefs: `#version 300 es
+        precision highp float;
+        in vec3 bary;
+        out vec4 fragColor;
+        
+        uniform vec3 u_color;
+        void main() {
+            float minCoord = min(bary.x, min(bary.y, bary.z));
+            fragColor = vec4((u_color * smoothstep(0.0, .05, minCoord)), 1.0);
+        }`,
         linevs: `#version 300 es
         precision highp float;
         in vec3 a_position;
@@ -81,24 +111,24 @@ class Renderer {
 
         out vec4 fragColor;
         
-        uniform float u_range;
+        uniform vec3 u_color;
+        uniform int u_specular;
 
         void main() {
-            vec3 norm = normalize(v_normal);
+            vec3 norm = gl_FrontFacing ? normalize(v_normal) : -normalize(v_normal);
             vec3 light_dir = normalize(v_to_light);
             vec3 cam_dir = normalize(v_to_cam);
             vec3 reflect_dir = reflect(-light_dir, norm);
-            vec3 base_color = vec3(max(abs(v_position.z)/u_range, 0.0), 0.0, .5);
 
             float diffuse = max(dot(norm, light_dir), 0.0);
-            float specular = pow(max(dot(cam_dir, reflect_dir), 0.0), 32.0);
+            float specular = pow(max(dot(cam_dir, reflect_dir), 0.0), 64.0);
             vec3 ambient = vec3(0.1);
-            vec3 color = ambient + diffuse * base_color + specular * vec3(1.0, 1.0, 1.0);
+            vec3 color = ambient + diffuse * u_color + specular * float(u_specular) * vec3(1.0, 1.0, 1.0);
             color = clamp(color, 0.0, 1.0);
             fragColor = vec4(color, 1);
         }`
     };
-    static #stencilProgram;
+    static #wireframeProgram;
     static #lineProgram;
     static #phongProgram;
     static #displayWidth;
@@ -114,9 +144,6 @@ class Renderer {
         Renderer.#canvas.width = Renderer.#canvas.clientWidth;
         Renderer.#canvas.height = Renderer.#canvas.clientHeight;
         Renderer.#gl.enable(Renderer.#gl.DEPTH_TEST);
-        Renderer.#gl.enable(Renderer.#gl.STENCIL_TEST);
-        Renderer.#gl.enable(Renderer.#gl.SAMPLE_ALPHA_TO_COVERAGE);
-        Renderer.#gl.clearStencil(0);
 
         if (!Renderer.#gl) {
             console.error('WebGL not supported, falling back on experimental-webgl');
@@ -135,11 +162,18 @@ class Renderer {
                                                 0, 0, -10,
                                                 0, 0, 10]),
                                 indices: new Uint16Array([0, 1, 
-                                                            2, 3, 
-                                                            4, 5]),
+                                                          2, 3, 
+                                                          4, 5]),
                                 buffers: [Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer()],
                                 vao: Renderer.#gl.createVertexArray()}};
 
+
+        // set up wireframe shaders
+        Renderer.#wireframeProgram = webglUtils.createProgramFromSources(Renderer.#gl, [Renderer.#shaders.wireframevs, Renderer.#shaders.wireframefs]);
+        Renderer.#gl.useProgram(Renderer.#wireframeProgram);
+        Renderer.#varLocations.wireframePositionLocation = Renderer.#gl.getAttribLocation(Renderer.#wireframeProgram, "a_position");
+        Renderer.#varLocations.wireframeProjectionMatrixLocation = Renderer.#gl.getUniformLocation(Renderer.#wireframeProgram, "u_matrix");
+        Renderer.#varLocations.wireframeColorLocation = Renderer.#gl.getUniformLocation(Renderer.#wireframeProgram, "u_color")
         // set up line shaders
         Renderer.#lineProgram = webglUtils.createProgramFromSources(Renderer.#gl, [Renderer.#shaders.linevs, Renderer.#shaders.linefs]);
         Renderer.#gl.useProgram(Renderer.#lineProgram);
@@ -165,7 +199,8 @@ class Renderer {
         Renderer.#varLocations.worldMatrixLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_world");
         Renderer.#varLocations.lightLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_light_pos");
         Renderer.#varLocations.camLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_cam_pos");
-        Renderer.#varLocations.rangeLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_range");
+        Renderer.#varLocations.colorLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_color");
+        Renderer.#varLocations.specularLocation = Renderer.#gl.getUniformLocation(Renderer.#phongProgram, "u_specular");
 
         const fov = Math.PI / 4;
         const aspect = Renderer.#canvas.clientWidth / Renderer.#canvas.clientHeight;
@@ -205,13 +240,10 @@ class Renderer {
         });
 
         window.addEventListener('resize', () => {
-            requestAnimationFrame(() => {
-                console.log('Resizing canvas', Renderer.#canvas.clientWidth, Renderer.#canvas.clientHeight);
-                Renderer.#canvas.width = Renderer.#canvas.clientWidth;
-                Renderer.#canvas.height = Renderer.#canvas.clientHeight;
-                Renderer.#gl.viewport(0, 0, Renderer.#canvas.width, Renderer.#canvas.height);
-                Renderer.updateProjectionMatrix();
-            });
+            Renderer.#canvas.width = Renderer.#canvas.clientWidth;
+            Renderer.#canvas.height = Renderer.#canvas.clientHeight;
+            Renderer.#gl.viewport(0, 0, Renderer.#canvas.width, Renderer.#canvas.height);
+            Renderer.updateProjectionMatrix();
         });
 
         Renderer.#canvas.addEventListener('wheel', (e) => {
@@ -275,15 +307,33 @@ class Renderer {
         zAxis.style.top = Math.floor(z[1]) + 'px';
     }
 
-    static addMesh(name, vertices, indices, normals) {
+    static updateLightPos() {
+        const xRadian = Math.PI / 180 * Renderer.lightXRotation;
+        const yRadian = Math.PI / 180 * Renderer.lightYRotation;
+        const x = 20 * Math.cos(xRadian) * Math.sin(yRadian);
+        const y = 20 * Math.sin(xRadian);
+        const z = 20 * Math.cos(xRadian) * Math.cos(yRadian);
+        Renderer.lightPos = [x, y, z];
+        Renderer.render();
+    }
+
+    static updateColor(name, color) {
+        const rgb = hexToRgb(color).map(c => c/255);
+        Renderer.#meshes[name].color = rgb;
+        Renderer.render();
+    }
+
+    static addMesh(name, vertices, normals) {
         Renderer.#meshes[name] = {};
         Renderer.#meshes[name].vertices = vertices;
-        Renderer.#meshes[name].indices = indices;
         Renderer.#meshes[name].normals = normals;
-
-        Renderer.#meshes[name].vao = Renderer.#gl.createVertexArray();
-        Renderer.#meshes[name].buffers = [Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer(), Renderer.#gl.createBuffer()];
-        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vao);
+        Renderer.#meshes[name].color = [1, 0, 0];
+        Renderer.#meshes[name].vaos = [Renderer.#gl.createVertexArray(),
+                                       Renderer.#gl.createVertexArray(), 
+                                       Renderer.#gl.createVertexArray()];
+        Renderer.#meshes[name].buffers = [Renderer.#gl.createBuffer(), 
+                                          Renderer.#gl.createBuffer()];
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[0]);
         // Binding position buffer
         Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
         Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, vertices, Renderer.#gl.STATIC_DRAW);
@@ -294,18 +344,53 @@ class Renderer {
         Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, normals, Renderer.#gl.STATIC_DRAW);
         Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.normalLocation);
         Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.normalLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
-        // Binding index buffer
-        Renderer.#gl.bindBuffer(Renderer.#gl.ELEMENT_ARRAY_BUFFER, Renderer.#meshes[name].buffers[2]);
-        Renderer.#gl.bufferData(Renderer.#gl.ELEMENT_ARRAY_BUFFER, indices, Renderer.#gl.STATIC_DRAW);
-        Renderer.#gl.bindVertexArray(null);
+        // Setting up wireframe vao
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[1]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.wireframePositionLocation);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.wireframePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        // Setting up points vao
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[2]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.linePositionLocation);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.linePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+    }
+
+    static updateMesh(name, vertices, normals) {
+        Renderer.#meshes[name].vertices = vertices;
+        Renderer.#meshes[name].normals = normals;
+        // phong/normal vao
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[0]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, vertices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.phongPositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[1]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, normals, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.normalLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        // wireframe vao
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[1]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.wireframePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        // points vao
+        Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[2]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.linePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
     }
 
     static removeMesh(name) {
         Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[0]);
         Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[1]);
-        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[2]);
-        Renderer.#gl.deleteVertexArray(Renderer.#meshes[name].vao);
+        Renderer.#meshes[name].vaos.forEach(vao => Renderer.#gl.deleteVertexArray(vao));
         delete Renderer.#meshes[name];
+    }
+
+    static clearMesh(name) {
+        Renderer.#meshes[name].vertices = new Float32Array([]);
+        Renderer.#meshes[name].normals = new Float32Array([]);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].vertices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[1]);
+        Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].normals, Renderer.#gl.STATIC_DRAW);
     }
 
     static render() {
@@ -325,22 +410,46 @@ class Renderer {
         Renderer.#gl.lineWidth(1);
         Renderer.#gl.drawElements(Renderer.#gl.LINES, 6, Renderer.#gl.UNSIGNED_SHORT, 0);
         Renderer.updateAxesDivs();
+
+        if (Renderer.activeShader === 'wireframe') {
+            Renderer.#gl.useProgram(Renderer.#wireframeProgram);
+            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.wireframeProjectionMatrixLocation, false, Renderer.#matrices.worldViewProjectionMatrix);
+        } else if (Renderer.activeShader === 'points') {
+            Renderer.#gl.useProgram(Renderer.#lineProgram);
+        } else {
+            Renderer.#gl.useProgram(Renderer.#phongProgram);
+            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.phongProjectionMatrixLocation, false, Renderer.#matrices.worldViewProjectionMatrix);
+            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.worldMatrixLocation, false, Renderer.#matrices.worldMatrix);
+            Renderer.#gl.uniform3fv(Renderer.#varLocations.lightLocation, Renderer.lightPos);
+            Renderer.#gl.uniform3fv(Renderer.#varLocations.camLocation, Renderer.#cameraConfig.camPos);
+            if (Renderer.activeShader === 'phong') {
+                Renderer.#gl.uniform1i(Renderer.#varLocations.specularLocation, true);
+            } else {
+                Renderer.#gl.uniform1i(Renderer.#varLocations.specularLocation, false);
+            }
+        }
+
         for (const name in Renderer.#meshes) {
             if (name === 'axes') continue;
             const mesh = Renderer.#meshes[name];
-            const lightPos = [20,20,20];
+            const color = Renderer.#meshes[name].color;
 
-            Renderer.#gl
-    
-            Renderer.#gl.useProgram(Renderer.#phongProgram);
-            Renderer.#gl.bindVertexArray(mesh.vao);
-            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.phongProjectionMatrixLocation, false, Renderer.#matrices.worldViewProjectionMatrix);
-            Renderer.#gl.uniformMatrix4fv(Renderer.#varLocations.worldMatrixLocation, false, Renderer.#matrices.worldMatrix);
-            Renderer.#gl.uniform3fv(Renderer.#varLocations.lightLocation, lightPos);
-            Renderer.#gl.uniform3fv(Renderer.#varLocations.camLocation, Renderer.#cameraConfig.camPos);
-            Renderer.#gl.uniform1f(Renderer.#varLocations.rangeLocation, Renderer.#range);
-            console.log(`Drawing ${name}`);
-            Renderer.#gl.drawElements(Renderer.#gl.TRIANGLE_STRIP, mesh.indices.length, Renderer.#gl.UNSIGNED_SHORT, 0);
+            if (Renderer.activeShader === 'phong' || Renderer.activeShader === 'diffuse') {
+                Renderer.#gl.bindVertexArray(mesh.vaos[0]);
+                Renderer.#gl.uniform3fv(Renderer.#varLocations.colorLocation, color);
+            } else if (Renderer.activeShader === 'wireframe') {
+                Renderer.#gl.bindVertexArray(mesh.vaos[1]);
+                Renderer.#gl.uniform3fv(Renderer.#varLocations.wireframeColorLocation, color);
+            } else if (Renderer.activeShader === 'points') {
+                Renderer.#gl.bindVertexArray(mesh.vaos[2]);
+            }
+            
+            if (Renderer.activeShader == 'points') {
+                Renderer.#gl.drawArrays(Renderer.#gl.POINTS, 0, mesh.vertices.length / 3);
+            } else {
+                Renderer.#gl.drawArrays(Renderer.#gl.TRIANGLES, 0, mesh.vertices.length / 3);
+            }
+            
         }
     }
 }

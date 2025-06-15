@@ -93,13 +93,12 @@ void Lexer::implicitMult(std::vector<std::string>& new_toks, unsigned int& i) {
 
 void Lexer::lexHelper() {
     std::string command;
-    bool negative = false;
 
     while (it_ != end_) {
 
         if (isspace(c_)) { // Ignore whitespace
             advance();
-        } else if (c_ == '\\') { // Handle commands, they always start with \ 
+        } else if (c_ == '\\') { // Handle commands, always start with \ //
             advance();
             while (it_ != end_ && (isalpha(c_) || c_ == '|')) {
                 command += c_;

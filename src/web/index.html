@@ -13,35 +13,66 @@
     </head>
     <body>
         <div id='latexEquations'>
-            <table>
-                <tr id='rowDisplay1'>
-                    <td id='label1' class='label' rowspan='1'>
-                        <div>1</div>
-                        <button class='viewButton'>▼</button>
-                    </td>
-                    <td id='display1'>
-                        <div>\[\displaystyle{\displaylines{\sin(x)}}\]</div>
-                        <button class='deleteEquation'>✖</button>
-                    </td>
-                </tr>
-                <tr id='rowEquation1'>
-                    <td colspan='2'>
-                        <textarea id='equation1' autofocus>\sin(x)</textarea>
-                    </td>
-                </tr>
-            </table>
-            <div id='plusDiv'>
-                <button id='addEquation'><img src='../../imgs/plus.png'></button>
+            <div id='tableContainer'>
+                <table>
+                    <tr id='rowDisplay1'>
+                        <td id='label1' class='label' rowspan='1'>
+                            <div>1</div>
+                            <button class='viewButton'>▼</button>
+                        </td>
+                        <td id='display1'>
+                            <div>
+                                \[\displaystyle{\displaylines{\sin(x)}}\]
+                            </div>
+                            <input type='color' class='color' value='#ff0000'>
+                            <button class='deleteEquation'>✖</button>
+                        </td>
+                    </tr>
+                    <tr id='rowEquation1'>
+                        <td colspan='2'>
+                            <textarea id='equation1' autofocus>\sin(x)</textarea>
+                        </td>
+                    </tr>
+                </table>
+                <div id='plusContainer'>
+                    <button id='addEquation'><img src='plus.png'></button>
+                </div>
             </div>
             <div id='settings'>
-                <button id='cog'></button>
+                <div id='coreSettingsContainer'>
+                    Range<br>
+                    <input type='range' class='slider' id='range' min=1 max=100 step=1 value=10></input>
+                    Mesh Resolution<br>
+                    <input type='range' class='slider' id='meshResolution' min=2 max=200 step=1 value=200></input>
+                </div>
+                <div id= 'lightingSettingsContainer'>
+                    Light X Rotation<br>
+                    <input type='range' class='slider' id='lightXRotation' min='0' max='180' step='1' value='90'>
+                    Light Y Rotation<br>
+                    <input type='range' class='slider' id='lightYRotation' min='0' max='360' step='1' value='270'>
+                </div>
+                <div id='shaderSettingsContainer'>
+                    <div id="shaderTypeContainer">
+                        Shader<br>
+                        <select id='shaderType' value = 'diffuse'>
+                            <option value='diffuse'>Diffuse</option>
+                            <option value='phong'>Phong</option>
+                            <option value='wireframe'>Wireframe</option>
+                            <option value='points'>Points</option>
+                        </select>
+                    </div>
+                    <div id='clipContainer'>
+                        <label for='clipZ'>Clip Z</label>
+                        <input type='checkbox' name='clipZ' id='clipZ' checked>
+                    </div>
+                </div>
             </div>
         </div>
         <div class='container'>
             <canvas id='glcanvas'></canvas>
-            <div id='xAxis'><strong>X</strong></div>
-            <div id='yAxis'><strong>Y</strong></div>
-            <div id='zAxis'><strong>Z</strong></div>
+            <div id='xAxis' class='axis'><strong>X = 10</strong></div>
+            <div id='yAxis' class='axis'><strong>Y = 10</strong></div>
+            <div id='zAxis' class='axis'><strong>Z = 10</strong></div>
         </div>
     </body>
 </html>
