@@ -23,7 +23,7 @@ int main(int argc, char *argv[]) {
 
     // Set the URL to the HTML page using the absolute path of the current directory
     QDir dir(QCoreApplication::applicationDirPath());
-    QUrl url = QUrl::fromLocalFile(dir.filePath("../Resources/index.html"));
+    QUrl url = QUrl::fromLocalFile(dir.filePath("../src/web/index.html"));
     view.setUrl(url);
 
     // Set the size of the window

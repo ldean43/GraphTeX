@@ -132,12 +132,10 @@ void Lexer::lexHelper() {
                 tokens_.push_back(std::string(1, c_));
                 advance();
             }
-        }
-        else if (isalpha(c_)) { // Handle single character variables
+        } else if (isalpha(c_)) { // Handle single character variables
             tokens_.push_back(std::string(1,c_));
             advance();
-        }
-        else if (std::isdigit(c_) || c_ == '.') { // Handle numbers
+        } else if (std::isdigit(c_) || c_ == '.') { // Handle numbers
             std::string number(1,c_);
             bool has_decimal = c_ == '.';
             advance();
@@ -157,6 +155,7 @@ void Lexer::lexHelper() {
             throw std::runtime_error("lexing error: invalid token");
         }
     }
+    if (tokens_.empty()) throw std::runtime_error("lexing error: no tokens");
     return;
 }
 

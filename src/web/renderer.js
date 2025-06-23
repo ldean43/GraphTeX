@@ -3,6 +3,8 @@ class Renderer {
     static #gl;
     static #canvas;
     static #meshes;
+    static isUpdating = null;
+    static pendingUpdate = null;
     static activeShader = 'diffuse';
     static lightPos = [20 * Math.cos(Math.PI/2) * Math.sin(3 * Math.PI/2),
                        20 * Math.sin(Math.PI/2),
@@ -255,6 +257,10 @@ class Renderer {
         });
     }
 
+    static getMeshes() {
+        return Renderer.#meshes;
+    }
+
     static updateCameraMatrix() {
         const camDistance = (Renderer.#cameraConfig.distance) / Math.tan(Math.PI / 4 / 2);
         // spherical coordinates
@@ -361,19 +367,28 @@ class Renderer {
         Renderer.#meshes[name].normals = normals;
         // phong/normal vao
         Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[0]);
+        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[0]);
+        Renderer.#meshes[name].buffers[0] = Renderer.#gl.createBuffer();
         Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
         Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, vertices, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.phongPositionLocation);
         Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.phongPositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
+        
+        Renderer.#gl.deleteBuffer(Renderer.#meshes[name].buffers[1]);
+        Renderer.#meshes[name].buffers[1] = Renderer.#gl.createBuffer();
         Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[1]);
         Renderer.#gl.bufferData(Renderer.#gl.ARRAY_BUFFER, normals, Renderer.#gl.STATIC_DRAW);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.normalLocation);
         Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.normalLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
         // wireframe vao
         Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[1]);
         Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.wireframePositionLocation);
         Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.wireframePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
         // points vao
         Renderer.#gl.bindVertexArray(Renderer.#meshes[name].vaos[2]);
         Renderer.#gl.bindBuffer(Renderer.#gl.ARRAY_BUFFER, Renderer.#meshes[name].buffers[0]);
+        Renderer.#gl.enableVertexAttribArray(Renderer.#varLocations.linePositionLocation);
         Renderer.#gl.vertexAttribPointer(Renderer.#varLocations.linePositionLocation, 3, Renderer.#gl.FLOAT, false, 0, 0);
     }
 
@@ -449,7 +464,6 @@ class Renderer {
             } else {
                 Renderer.#gl.drawArrays(Renderer.#gl.TRIANGLES, 0, mesh.vertices.length / 3);
             }
-            
         }
     }
 }

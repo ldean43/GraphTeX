@@ -1,20 +1,5 @@
 #include "bridge.hpp"
 #include "geometry.hpp"
-#include <cmath>
-
-QString Bridge::getVertices(const QString &id) {
-    QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QByteArray raw(reinterpret_cast<const char*>(vertices_[norm].data()), vertices_[norm].size() * sizeof(float));
-    QString base64 = QString::fromLatin1(raw.toBase64());
-    return base64;
-}
-
-QString Bridge::getNormals(const QString &id) {
-    QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
-    QByteArray raw(reinterpret_cast<const char*>(normals_[norm].data()), normals_[norm].size() * sizeof(float));
-    QString base64 = QString::fromLatin1(raw.toBase64());
-    return base64;
-}
 
 bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVariantMap &vars, QVariant step_q, QVariant range_q, QVariant clip_z) {
     // Normalize the ID to ensure consistent hashing
@@ -46,11 +31,7 @@ bool Bridge::updateEvaluator(const QString &latex, const QString &id, const QVar
             }
 
             // Generate the mesh
-            Geometry geometry(evaluators_[norm], step, range, clip);
-            qDebug() << geometry.vertices_.size();
-            vertices_[norm] = geometry.vertices_;
-            normals_[norm] = geometry.normals_;
-            qDebug() << "Mesh updated for ID:" << norm;
+            generateMeshASync(id, range, step, clip);
             return true;
         } catch (const std::exception& e) {
             qDebug() << "Error updating AST:" << e.what();
@@ -83,9 +64,7 @@ bool Bridge::createEvaluator(const QString &latex, const QString &id, const QVar
         }
 
         // Generate the mesh
-        Geometry geometry(evaluators_[norm], step, range, clip);
-        vertices_[norm] = geometry.vertices_;
-        normals_[norm] = geometry.normals_;
+        generateMeshASync(id, range, step, clip);
         qDebug() << "Mesh updated for ID:" << norm;
         return true;
     } catch (const std::exception& e) {
@@ -100,8 +79,6 @@ bool Bridge::deleteEvaluator(const QString &id) {
     QString norm = id.trimmed().normalized(QString::NormalizationForm_C);
     if (evaluators_.count(norm)) {
         delete evaluators_[norm];
-        evaluators_.erase(norm);
-        vertices_.erase(norm);
         return true;
     }
     return false;
@@ -113,9 +90,52 @@ void Bridge::updateMesh(int range, int step, bool clip_z) {
         Evaluator* evaluator = pair.second;
 
         // Update the geometry with the new range and step
-        Geometry geometry(evaluator, step, range, clip_z);
-        vertices_[id] = geometry.vertices_;
-        normals_[id] = geometry.normals_;
+        generateMeshASync(id, range, step, clip_z);
         qDebug() << "Step and range updated for ID:" << id;
     }
+}
+
+void Bridge::generateMeshASync(const QString& id, int range, int step, bool clip_z) {
+    if (!evaluators_.count(id)) return;
+    
+    Evaluator* evaluator = evaluators_[id];
+    long long job_id = ++latest_id_;
+
+    auto future = QtConcurrent::run([this, evaluator, step, range, clip_z]() -> std::pair<std::vector<float>, std::vector<float>> {
+        try {
+            Geometry geometry(evaluator, step, range, clip_z);
+            return std::make_pair(geometry.vertices_, geometry.normals_);
+        } catch (const std::exception& e) {
+            qDebug() << "Error generating mesh: " << e.what();
+            return std::make_pair(std::vector<float>(), std::vector<float>());
+        }
+    });
+
+    auto watcher = new QFutureWatcher<std::pair<std::vector<float>, std::vector<float>>>(this);
+    connect(watcher, &QFutureWatcher<std::pair<std::vector<float>, std::vector<float>>>::finished, 
+            [this, job_id, watcher, id]() {
+        auto result = watcher->result();
+        if (result.first.empty() && result.second.empty()) return;
+
+        QByteArray raw_vertices(reinterpret_cast<const char*>(result.first.data()), result.first.size() * sizeof(float));
+        QString vertices_base64 = QString::fromLatin1(raw_vertices.toBase64());
+
+        QByteArray raw_normals(reinterpret_cast<const char*>(result.second.data()), result.second.size() * sizeof(float));
+        QString normals_base64 = QString::fromLatin1(raw_normals.toBase64());
+        
+        qDebug() << "Mesh updated for ID:" << id;
+        // Ensure older threads that finish later than newer ones don't overwrite new data
+        if (job_id >= latest_completed_id_) {
+            latest_completed_id_ = job_id;
+            emit meshUpdated(id, vertices_base64, normals_base64);
+        }
+        
+        watcher->deleteLater();
+    });
+    
+    watcher->setFuture(future);
+}
+
+void Bridge::print(const QString& str) {
+    qDebug() << str;
 }

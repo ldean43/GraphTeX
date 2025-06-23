@@ -35,6 +35,19 @@ canvas {
     flex-grow: 1;
 }
 
+.num {
+    width: 50%;
+    height: 15px;
+    box-sizing: border-box;
+    font-size: 10px;
+    font-family: Arial, sans-serif;
+    color: black;
+    border-radius: 7.5px;
+    border: 0px;
+    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+    padding-left: 5px;
+}
+
 .color {
     position: absolute;
     right: 5px;
@@ -135,7 +148,6 @@ canvas {
 
 .slider {
     width:50%;
-    
 }
 
 #latexEquations {
@@ -162,10 +174,11 @@ canvas {
 }
 
 #tableContainer {
-    position:relative;
+    position: relative;
     flex-grow: 1;
     width: 100%;
-    overflow: scroll;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 #settings {
@@ -218,6 +231,9 @@ canvas {
     font-size: 10px;
     font-family: Arial, sans-serif;
     color: black;
+    border-radius: 7.5px;
+    border: 0px;
+    box-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5)
 }
 
 #clipContainer {

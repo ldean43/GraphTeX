@@ -4,12 +4,14 @@ class UI {
     static step;
     static latest = 0;
     static clipZ = true;
+    static throttleUpdateMesh;
 
-    static init() {
+    static init(throttle) {
         // Initialize event listeners for first 2 rows of the table
         UI.table = document.querySelector('table');
         UI.step = document.getElementById('meshResolution').value;
         UI.range = document.getElementById('range').value;
+        UI.throttleUpdateMesh = throttle;
         document.querySelector('#display1 button').onclick = () => UI.deleteEquation(1);
         document.querySelector('#label1 button').onclick = () => UI.viewLatex(1);
         document.querySelector('#display1 input').onchange = (e) => Renderer.updateColor('equation1', e.target.value);
@@ -23,19 +25,8 @@ class UI {
         document.getElementById('clipZ').onchange = (e) => { UI.clipZ = e.target.checked; UI.updateDisplay(1) }
 
         bridge.createEvaluator('\\sin(x)', 'equation1', {'x': 0, 'y': 0}, 150, 10, true).then(res => {
-            if (res) {
-                bridge.getVertices('equation1').then(res => {
-                    const vertices = base64toFloat32(res);
-                    bridge.getNormals('equation1').then(res => {
-                        const normals = base64toFloat32(res);
-                        Renderer.addMesh('equation1', vertices, normals);
-                        Renderer.render();
-                    });
-                });
-            } else {
-                Renderer.clear();
-            }
-        });
+            if (!res) Renderer.clear();
+        })
     }
 
     // Update the display with the current equation
@@ -47,20 +38,11 @@ class UI {
 
         // Update C++ evaluator, generate mesh, and render
         bridge.updateEvaluator(equation, `equation${num}`, {'x': 0, 'y': 0}, UI.step, UI.range, UI.clipZ).then(res => {
-            if (res) {
-                bridge.getVertices(`equation${num}`).then(res => {
-                    const vertices = base64toFloat32(res);
-                    bridge.getNormals(`equation${num}`).then(res => {
-                        const normals = base64toFloat32(res);
-                        Renderer.updateMesh(`equation${num}`, vertices, normals);
-                        Renderer.render();
-                    });
-                });
-            } else {
+            if (!res) {
                Renderer.clearMesh(`equation${num}`);
                Renderer.render();
             }
-        })
+        });
     }
 
     // Toggle the visibility of the LaTeX input area
@@ -121,18 +103,7 @@ class UI {
 
         // Create C++ evaluator, generate mesh, and render
         bridge.createEvaluator('\\sin(x)', `equation${num}`, {'x': 0, 'y': 0}, UI.step, UI.range, UI.clipZ).then(res => {
-            if (res) {
-                bridge.getVertices(`equation${num}`).then(res => {
-                    const vertices = base64toFloat32(res);
-                    bridge.getNormals(`equation${num}`).then(res => {
-                        const normals = base64toFloat32(res);
-                        Renderer.addMesh(`equation${num}`, vertices, normals);
-                        Renderer.render();
-                    });
-                });
-            } else {
-                Renderer.clear();
-            }
+            if (!res) Renderer.clear();
         });
     }
 
@@ -181,84 +152,51 @@ class UI {
                 document.getElementById('clipZ').addEventListener('change', (e) => { UI.clipZ = e.target.checked; UI.updateDisplay(i - 1) });
 
                 // Update the C++ evaluator and generate new mesh
-                promises.push(bridge.updateEvaluator(newTextarea.value, `equation${i - 1}`, {'x': 0, 'y': 0}, UI.step, UI.range, UI.clipZ).then(res => {
-                    if (res) {
-                        return bridge.getVertices(`equation${i - 1}`).then(res => {
-                            const vertices = base64toFloat32(res);
-                            return bridge.getNormals(`equation${i - 1}`).then(res => {
-                                const normals = base64toFloat32(res);
-                                Renderer.addMesh(`equation${i - 1}`, vertices, normals);
-                            });
-                        });
-                    } else {
-                        Renderer.clear();
-                    }
-                }));
+                bridge.updateEvaluator(newTextarea.value, `equation${i - 1}`, {'x': 0, 'y': 0}, UI.step, UI.range, UI.clipZ).then(res => {
+                    if (!res) Renderer.clear();
+                });
             }
             bridge.deleteEvaluator(`equation${UI.table.rows.length / 2 + 1}`);
             Renderer.removeMesh(`equation${UI.table.rows.length / 2 + 1}`);
         } 
-        Promise.all(promises).then(res => Renderer.render());
         MathJax.typesetPromise();
     }
 
     static updateRange(value) {
+        if (value > 100) {
+            document.getElementById('range').value = 100;
+            value = 100;
+        } else if (value < 1) {
+            document.getElementById('range').value = 1;
+            value = 1;
+        }
+
         UI.range = value;
         UI.step = document.getElementById('meshResolution').value;
-        const tok = ++UI.latest;
         const x = document.getElementById('xAxis');
         const y = document.getElementById('yAxis');
         const z = document.getElementById('zAxis');
-        x.innerHTML = `<strong>X = ${UI.range}</strong>`
-        y.innerHTML = `<strong>Y = ${UI.range}</strong>`
-        z.innerHTML = `<strong>Z = ${UI.range}</strong>`
-
-        bridge.updateMesh(value, UI.step, UI.clipZ).then(res => {
-            const promises = [];
-
-            for (let i = 1; i <= UI.table.rows.length / 2; i++) {
-                const equationId = `equation${i}`;
-                promises.push(bridge.getVertices(equationId).then(res => {
-                    const vertices = base64toFloat32(res);
-                    const p = bridge.getNormals(equationId).then(res => {
-                        const normals = base64toFloat32(res);
-                        Renderer.updateMesh(equationId, vertices, normals);
-                    });
-                    return p;
-                }));
-            }
-
-            return Promise.all(promises);
-        }).then(() => {
-            if (UI.latest !== tok) { return; }
-            Renderer.render();
-        });  
+        x.innerHTML = `<strong>X = ${value}`;
+        y.innerHTML = `<strong>Y = ${value}`;
+        z.innerHTML = `<strong>Z = ${value}`;
+        UI.throttleUpdateMesh(value, UI.step, UI.clipZ);
     }
 
     static updateMeshResolution(value) {
+        if (value > 200) {
+            document.getElementById('meshResolution').value = 200;
+            value = 200;
+        } else if (value < 3) {
+            if (value < 0) {
+                document.getElementById('meshResolution').value = 1;
+            }
+            for (const mesh in Renderer.getMeshes) {
+                Renderer.clearMesh(mesh);
+            }
+        }
+
         UI.step = value;
         UI.range = document.getElementById('range').value;
-        const tok = ++UI.latest;
-
-        bridge.updateMesh(UI.range, value, UI.clipZ).then(res => {
-            const promises = [];
-
-            for (let i = 1; i <= UI.table.rows.length / 2; i++) {
-                const equationId = `equation${i}`;
-                promises.push(bridge.getVertices(equationId).then(res => {
-                    const vertices = base64toFloat32(res);
-                    const p = bridge.getNormals(equationId).then(res => {
-                        const normals = base64toFloat32(res);
-                        Renderer.updateMesh(equationId, vertices, normals);
-                    });
-                    return p;
-                }));
-            }
-
-            return Promise.all(promises);
-        }).then(() => {
-            if (UI.latest !== tok) { return; }
-            Renderer.render();
-        });
+        UI.throttleUpdateMesh(UI.range, value, UI.clipZ);
     }
 }
